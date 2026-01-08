@@ -1,1 +1,85 @@
+name: JobThai Scraper Uni
 
+# กำหนดเวลาทำงาน
+on:
+  workflow_dispatch:      # 1. ปุ่มกดรันเอง (Manual Run)
+  schedule:
+    - cron: '0 17 * * *'   # 2. รันอัตโนมัติทุกวันตอน 00:00 น. ประเทศไทย (UTC 17:00)
+
+jobs:
+  scrape_job:
+    runs-on: ubuntu-latest
+    
+    # ตั้งค่า Timezone ให้เป็นประเทศไทย (สำคัญสำหรับการเช็ค Hot/New)
+    env:
+      TZ: 'Asia/Bangkok'
+
+    steps:
+      # 1. ดึงโค้ดล่าสุดจาก GitHub มาวางที่ Server
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # 2. ติดตั้ง Python
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+
+      # 3. ติดตั้ง Google Chrome (เวอร์ชั่นล่าสุด)
+      - name: Install Google Chrome
+        run: |
+          wget -q -O - https://dl-ssl.google.com/linux/linux_signing_key.pub | sudo apt-key add -
+          sudo sh -c 'echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" >> /etc/apt/sources.list.d/google-chrome.list'
+          sudo apt-get update
+          sudo apt-get install -y google-chrome-stable
+
+      # 4. ลง Library ตามไฟล์ requirements.txt
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          
+      # 5. สร้างไฟล์ Config และ .env (ดึงค่าจาก Secrets มาสร้างไฟล์จริง)
+      - name: Create Config & Env Files
+        run: |
+          # 🟢 1. สร้างไฟล์ความลับบริษัทจาก Secrets (แทนการ touch ไฟล์เปล่า)
+          echo "${{ secrets.COMPETITORS_DATA }}" > compe.yaml
+          echo "${{ secrets.CLIENTS_DATA }}" > co.yaml
+          echo "${{ secrets.TIER1_DATA }}" > tier1.yaml  # <-- เพิ่มไฟล์ Tier 1
+          
+          # 🟢 2. สร้างไฟล์ .env (เพิ่ม Google Sheets Key)
+          echo "JOBTHAI_USER=${{ secrets.JOBTHAI_USER }}" >> User.env
+          echo "JOBTHAI_PASS=${{ secrets.JOBTHAI_PASS }}" >> User.env
+          echo "EMAIL_SENDER=${{ secrets.EMAIL_SENDER }}" >> User.env
+          echo "EMAIL_PASSWORD=${{ secrets.EMAIL_PASSWORD }}" >> User.env
+          echo "EMAIL_RECEIVER=${{ secrets.EMAIL_RECEIVER }}" >> User.env
+          echo "G_SHEET_KEY=${{ secrets.G_SHEET_KEY }}" >> User.env    # <-- เพิ่ม
+          echo "G_SHEET_NAME=${{ secrets.G_SHEET_NAME }}" >> User.env  # <-- เพิ่ม
+
+      # 6. รันโค้ด Python
+      - name: Run Scraper
+        env:
+          JOBTHAI_USER: ${{ secrets.JOBTHAI_USER }}
+          JOBTHAI_PASS: ${{ secrets.JOBTHAI_PASS }}
+          EMAIL_SENDER: ${{ secrets.EMAIL_SENDER }}
+          EMAIL_PASSWORD: ${{ secrets.EMAIL_PASSWORD }}
+          EMAIL_RECEIVER: ${{ secrets.EMAIL_RECEIVER }}
+          COOKIES_JSON: ${{ secrets.COOKIES_JSON }}
+          GITHUB_EVENT_NAME: ${{ github.event_name }}
+          
+          # 🟢 เพิ่ม 2 บรรทัดนี้ (ส่งค่าไปให้ Python)
+          G_SHEET_KEY: ${{ secrets.G_SHEET_KEY }}
+          G_SHEET_NAME: ${{ secrets.G_SHEET_NAME }}
+          
+        run: python Git1.py
+
+      # 7. เก็บไฟล์ CSV และรูปภาพที่ได้ กลับมาให้เราดาวน์โหลด
+      - name: Upload Results (CSV & Images)
+        if: always() # รันขั้นตอนนี้เสมอ แม้โปรแกรมจะ Error กลางทาง
+        uses: actions/upload-artifact@v4
+        with:
+          name: scraper-results
+          path: |
+            *.csv
+            resume_images/
+            *.png  <-- เพิ่มบรรทัดนี้ (เพื่อเก็บรูป Screenshot ตอน Error)
+          retention-days: 90
