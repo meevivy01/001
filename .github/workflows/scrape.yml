@@ -38,28 +38,30 @@ jobs:
         run: |
           pip install -r requirements.txt
           
-      # 5. สร้างไฟล์ Config และ .env (ฉบับแก้ Bug อักขระพิเศษ)
+      # 5. สร้างไฟล์ Config และ .env (ฉบับแก้ไข: ไม่ต้องยัด JSON ลงไฟล์ .env)
       - name: Create Config & Env Files
         env:
-          # 🟢 ประกาศตัวแปรรับค่าจาก Secrets ไว้ตรงนี้ก่อน (ปลอดภัยกว่า)
           DATA_COMP: ${{ secrets.COMPETITORS_DATA }}
           DATA_CLIENT: ${{ secrets.CLIENTS_DATA }}
           DATA_TIER1: ${{ secrets.TIER1_DATA }}
         run: |
-          # 🟢 สั่งเขียนไฟล์ผ่านตัวแปร (Bash จะไม่งงกับวงเล็บหรือฟันหนูแล้ว)
+          # สร้างไฟล์ yaml (ใช้ตัวแปรเพื่อป้องกันอักขระพิเศษพัง)
           echo "$DATA_COMP" > compe.yaml
           echo "$DATA_CLIENT" > co.yaml
           echo "$DATA_TIER1" > tier1.yaml
           
-          # สร้างไฟล์ .env (ส่วนนี้ใช้แบบเดิมได้)
+        
+          
           touch User.env
           echo "JOBTHAI_USER=${{ secrets.JOBTHAI_USER }}" >> User.env
           echo "JOBTHAI_PASS=${{ secrets.JOBTHAI_PASS }}" >> User.env
           echo "EMAIL_SENDER=${{ secrets.EMAIL_SENDER }}" >> User.env
           echo "EMAIL_PASSWORD=${{ secrets.EMAIL_PASSWORD }}" >> User.env
           echo "EMAIL_RECEIVER=${{ secrets.EMAIL_RECEIVER }}" >> User.env
-          echo "G_SHEET_KEY=${{ secrets.G_SHEET_KEY }}" >> User.env
-          echo "G_SHEET_NAME=${{ secrets.G_SHEET_NAME }}" >> User.env
+          
+          # ❌ ลบ 2 บรรทัดนี้ออกครับ (ตัวต้นเหตุปัญหา)
+          # echo "G_SHEET_KEY=..." >> User.env
+          # echo "G_SHEET_NAME=..." >> User.env
 
       # 6. รันโค้ด Python
       - name: Run Scraper
