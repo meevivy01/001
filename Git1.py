@@ -1,3 +1,11 @@
+"""
+Scraper: JobThai Automation - Google Sheets Edition (Fix Salary Columns)
+Features:
+  - Google Sheets Batch Upload (1 Tab/Day)
+  - Secrets Management
+  - Salary Min/Max Split Columns fixed
+"""
+
 import time
 import pandas as pd
 import undetected_chromedriver as uc
@@ -8,8 +16,8 @@ import random
 import yaml
 import json
 import smtplib
-import gspread # 🟢 Library ใหม่
-from oauth2client.service_account import ServiceAccountCredentials # 🟢 Library ใหม่
+import gspread
+from oauth2client.service_account import ServiceAccountCredentials
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from email.mime.image import MIMEImage
@@ -43,12 +51,11 @@ uc.Chrome.__del__ = suppress_del_error
 ENV_PATH = "User.env"
 COMPETITORS_PATH = "compe.yaml"
 CLIENTS_PATH = "co.yaml"
-TIER1_PATH = "tier1.yaml" # 🟢 ไฟล์ความลับ Tier 1
+TIER1_PATH = "tier1.yaml"
 RESUME_IMAGE_FOLDER = "resume_images" 
 USE_HEADLESS_JOBTHAI = True 
 EMAIL_USE_HISTORY = False       
 
-# 🟢 ดึงอีเมลจาก Environment (ปลอดภัยที่สุด)
 rec_env = os.getenv("EMAIL_RECEIVER")
 MANUAL_EMAIL_RECEIVERS = [rec_env] if rec_env else []
 
@@ -59,11 +66,9 @@ load_dotenv(ENV_PATH, override=True)
 MY_USERNAME = os.getenv("JOBTHAI_USER")
 MY_PASSWORD = os.getenv("JOBTHAI_PASS")
 
-# 🟢 รับค่า Config Google Sheet
 G_SHEET_KEY_JSON = os.getenv("G_SHEET_KEY")
 G_SHEET_NAME = os.getenv("G_SHEET_NAME")
 
-# 🟢 โหลดข้อมูล Tier 1 จากไฟล์ (Secrets)
 TIER1_TARGETS = {}
 if os.path.exists(TIER1_PATH):
     try:
@@ -164,7 +169,6 @@ class JobThaiRowScraper:
         self.wait = WebDriverWait(self.driver, 20)
         self.total_profiles_viewed = 0 
         
-        # 🟢 ตัวแปรสำหรับสะสมข้อมูล (Batch) เพื่อส่งขึ้น Google Sheet ทีเดียว
         self.all_scraped_data = []
 
     def save_history(self):
@@ -443,6 +447,28 @@ class JobThaiRowScraper:
         combined_positions = ", ".join([p for p in [pos1, pos2, pos3] if p])
         data['เงินเดือนที่ต้องการ'] = get_val("//td[contains(., 'เงินเดือนที่ต้องการ')]/following-sibling::td[1]", True)
         
+        # 🟢 [FIXED] เพิ่ม Logic คำนวณเงินเดือนขั้นต่ำ/สูงสุด
+        salary_min_txt = "-"
+        salary_max_txt = "-"
+        raw_salary = data.get('เงินเดือนที่ต้องการ', '')
+        try:
+            if raw_salary and 'ปิดข้อมูล' not in str(raw_salary):
+                s = str(raw_salary).lower().replace(',', '')
+                s = re.sub(r'(\d+(\.\d+)?)\s*k', lambda m: str(float(m.group(1)) * 1000), s)
+                nums = re.findall(r'\d+(?:\.\d+)?', s)
+                nums = [float(n) for n in nums]
+                if nums:
+                    mn, mx = nums[0], nums[0]
+                    if len(nums) >= 2: mn, mx = nums[0], nums[1]
+                    if mx > 1000 and mn < 1000 and mn > 0: mn *= 1000
+                    salary_min_txt = f"{int(mn):,}"
+                    salary_max_txt = f"{int(mx):,}"
+        except: pass
+        
+        # 🟢 ยัดใส่ data หลักด้วย (เพื่อให้ Google Sheets อ่านเจอ)
+        data['Salary_Min'] = salary_min_txt
+        data['Salary_Max'] = salary_max_txt
+
         all_work_history = []
         try:
             if "ประวัติการทำงาน/ฝึกงาน" in full_text:
@@ -489,6 +515,8 @@ class JobThaiRowScraper:
             "keyword": keyword, 
             "company": competitor_str,
             "degree": highest_degree_text,
+            "salary_min": salary_min_txt,
+            "salary_max": salary_max_txt,
             "id": app_id,
             "name": full_name,
             "age": data.get('อายุ', '-'),
@@ -649,19 +677,18 @@ class JobThaiRowScraper:
             # 3. สร้าง Tab ชื่อวันที่ปัจจุบัน (DD-MM-YYYY)
             today_str = datetime.datetime.now().strftime("%d-%m-%Y")
             try:
-                # ลองดึง worksheet เผื่อมีอยู่แล้ว (จะได้ไม่ Error)
                 worksheet = sheet.worksheet(today_str)
                 console.print(f"ℹ️ พบ Tab '{today_str}' อยู่แล้ว -> จะทำการต่อท้ายข้อมูล (Append)", style="info")
             except:
-                # ถ้าไม่มี ให้สร้างใหม่
                 worksheet = sheet.add_worksheet(title=today_str, rows="100", cols="20")
                 console.print(f"🆕 สร้าง Tab ใหม่: '{today_str}'", style="success")
                 
-                # เขียน Header
+                # เขียน Header (🟢 เพิ่ม Min/Max)
                 headers = [
                     "Link", "Keyword", "รหัสใบสมัคร", "ชื่อ-นามสกุล", "อายุ", "เพศ", 
                     "เบอร์โทร", "Email", "ที่อยู่", "ระดับการศึกษา", "มหาลัย", "คณะ", "สาขา",
-                    "ตำแหน่งที่สมัคร", "เงินเดือนที่ขอ", "เคยทำบริษัทคู่แข่ง", "อัพเดทล่าสุด"
+                    "ตำแหน่งที่สมัคร", "เงินเดือนที่ขอ (Raw)", "เงินเดือนต่ำสุด", "เงินเดือนสูงสุด", # 🟢 เพิ่มตรงนี้
+                    "เคยทำบริษัทคู่แข่ง", "อัพเดทล่าสุด"
                 ]
                 worksheet.append_row(headers)
 
@@ -676,7 +703,7 @@ class JobThaiRowScraper:
                     f"{item.get('ชื่อ','')} {item.get('นามสกุล','')}",
                     item.get('อายุ', ''),
                     item.get('เพศ', ''),
-                    re.sub(r'\D', '', str(item.get('เบอร์โทร', ''))), # Clean Phone
+                    re.sub(r'\D', '', str(item.get('เบอร์โทร', ''))),
                     str(item.get('Email', '')).replace('Click', '').strip(),
                     item.get('จังหวัดที่อยู่', ''),
                     item.get('ระดับการศึกษา', ''),
@@ -685,6 +712,8 @@ class JobThaiRowScraper:
                     item.get('สาขา', ''),
                     f"{item.get('ตำแหน่งที่ต้องการสมัคร_1','')} {item.get('ตำแหน่งที่ต้องการสมัคร_2','')}",
                     item.get('เงินเดือนที่ต้องการ', ''),
+                    item.get('Salary_Min', '-'), # 🟢 เพิ่มตรงนี้
+                    item.get('Salary_Max', '-'), # 🟢 เพิ่มตรงนี้
                     item.get('เคยทำบริษัทคู่แข่ง', ''),
                     item.get('อัพเดทล่าสุด', '')
                 ]
