@@ -89,5 +89,5 @@ jobs:
           path: |
             *.csv
             resume_images/
-            *.png  <-- เพิ่มบรรทัดนี้ (เพื่อเก็บรูป Screenshot ตอน Error)
+            *.png  
           retention-days: 1
