@@ -90,4 +90,4 @@ jobs:
             *.csv
             resume_images/
             *.png  <-- เพิ่มบรรทัดนี้ (เพื่อเก็บรูป Screenshot ตอน Error)
-          retention-days: 90
+          retention-days: 1
