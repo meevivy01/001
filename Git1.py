@@ -1,11 +1,3 @@
-"""
-Scraper: JobThai Automation - Google Sheets Edition (Fix Salary Columns)
-Features:
-  - Google Sheets Batch Upload (1 Tab/Day)
-  - Secrets Management
-  - Salary Min/Max Split Columns fixed
-"""
-
 import time
 import pandas as pd
 import undetected_chromedriver as uc
@@ -427,8 +419,31 @@ class JobThaiRowScraper:
             data['รูปภาพ'] = save_path
         except: data['รูปภาพ'] = ""
 
+        # 🟢 [FIXED] ส่วนคำนวณวันที่ (ที่หายไป) นำกลับมาใส่แล้วครับ
         raw_update_date = get_val('//*[@id="ResumeViewDiv"]/table/tbody/tr[2]/td[3]/span[2]', xpath=True)
-        data['อัพเดทล่าสุด'] = raw_update_date 
+        
+        def calculate_last_update(date_str):
+            if not date_str: return "-"
+            try:
+                parts = date_str.split()
+                if len(parts) < 3: return "-"
+                day = int(parts[0])
+                month_str = parts[1]
+                year_be = int(parts[2])
+                year_ad = year_be - 543
+                thai_months = {'มกราคม': 1, 'กุมภาพันธ์': 2, 'มีนาคม': 3, 'เมษายน': 4, 'พฤษภาคม': 5, 'มิถุนายน': 6, 'กรกฎาคม': 7, 'สิงหาคม': 8, 'กันยายน': 9, 'ตุลาคม': 10, 'พฤศจิกายน': 11, 'ธันวาคม': 12}
+                month = thai_months.get(month_str, 1)
+                update_dt = datetime.datetime(year_ad, month, day)
+                diff = relativedelta(datetime.datetime.now(), update_dt)
+                txt = []
+                if diff.years > 0: txt.append(f"{diff.years}ปี")
+                if diff.months > 0: txt.append(f"{diff.months}เดือน")
+                if diff.days > 0: txt.append(f"{diff.days}วัน")
+                if not txt: return "วันนี้"
+                return " ".join(txt)
+            except: return "-"
+            
+        data['อัพเดทล่าสุด'] = calculate_last_update(raw_update_date) # ใช้อันที่คำนวณแล้ว
 
         data['ชื่อ'] = get_val("#mainTableTwoColumn td > span.head1")
         data['นามสกุล'] = get_val("span.black:nth-of-type(3)")
@@ -447,7 +462,7 @@ class JobThaiRowScraper:
         combined_positions = ", ".join([p for p in [pos1, pos2, pos3] if p])
         data['เงินเดือนที่ต้องการ'] = get_val("//td[contains(., 'เงินเดือนที่ต้องการ')]/following-sibling::td[1]", True)
         
-        # 🟢 [FIXED] เพิ่ม Logic คำนวณเงินเดือนขั้นต่ำ/สูงสุด
+        # 🟢 [FIXED] ส่วนแยกเงินเดือน (ที่เพิ่มให้ตะกี้)
         salary_min_txt = "-"
         salary_max_txt = "-"
         raw_salary = data.get('เงินเดือนที่ต้องการ', '')
@@ -465,7 +480,6 @@ class JobThaiRowScraper:
                     salary_max_txt = f"{int(mx):,}"
         except: pass
         
-        # 🟢 ยัดใส่ data หลักด้วย (เพื่อให้ Google Sheets อ่านเจอ)
         data['Salary_Min'] = salary_min_txt
         data['Salary_Max'] = salary_max_txt
 
@@ -502,9 +516,9 @@ class JobThaiRowScraper:
         competitor_str = ", ".join(all_work_history)
         data['เคยทำบริษัทคู่แข่ง'] = competitor_str
 
-        # วันที่และอายุ
+        # วันที่และอายุ (สำหรับการคำนวณ Logic แต่ไม่เกี่ยวกับตัวโชว์)
         today_date = datetime.date.today()
-        update_date = self.parse_thai_date_exact(raw_update_date)
+        update_date = self.parse_thai_date_exact(raw_update_date) # ใช้วันที่ดิบมาคำนวณ Diff (ถูกต้องแล้ว)
         days_diff = 999
         if update_date: days_diff = (today_date - update_date).days
 
@@ -521,7 +535,7 @@ class JobThaiRowScraper:
             "name": full_name,
             "age": data.get('อายุ', '-'),
             "positions": combined_positions, 
-            "last_update": raw_update_date, 
+            "last_update": data['อัพเดทล่าสุด'], # 🟢 ตรงนี้จะโชว์เป็น '2 วัน' ตามที่คำนวณแล้ว
             "link": url,
             "image_path": data.get('รูปภาพ', '')
         }
