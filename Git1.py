@@ -223,7 +223,7 @@ class JobThaiRowScraper:
             console.print("🍪 ใช้ Cookie Bypass...", style="bold green")
             try:
                 self.driver.get("https://www.jobthai.com/th/employer")
-                time.sleep(2)
+                time.sleep(3)
                 cookies_list = json.loads(cookies_env)
                 for cookie in cookies_list:
                     c = {k: v for k, v in cookie.items() if k in ['name', 'value', 'domain', 'path', 'expiry', 'secure', 'httpOnly']}
