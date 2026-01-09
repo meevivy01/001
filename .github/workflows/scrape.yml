@@ -4,7 +4,7 @@ name: JobThai Scraper Uni
 on:
   workflow_dispatch:      # 1. ปุ่มกดรันเอง (Manual Run)
   schedule:
-    - cron: '43 1 * * *'   # 2. รันอัตโนมัติทุกวันตอน 00:00 น. ประเทศไทย (UTC 17:00)
+    - cron: '0 17 * * *'   # 2. รันอัตโนมัติทุกวันตอน 00:00 น. ประเทศไทย (UTC 17:00)
 
 jobs:
   scrape_job:
