@@ -388,28 +388,76 @@ class JobThaiRowScraper:
     def step2_search(self, keyword):
         search_url = "https://www3.jobthai.com/findresume/findresume.php?l=th"
         console.print(f"2️⃣   กำลังเข้าหน้าค้นหาและพิมพ์: '[bold]{keyword}[/]' ...", style="info")
+        
         try:
-            self.driver.get(search_url)
-            self.random_sleep(7, 10) 
-            keyword_input = WebDriverWait(self.driver, 20).until(EC.visibility_of_element_located((By.ID, "KeyWord")))
-            keyword_input.clear()
-            time.sleep(0.5)
-            keyword_input.send_keys(keyword)
-            time.sleep(1)
-            search_btn = self.driver.find_element(By.ID, "buttonsearch")
-            try: search_btn.click()
-            except: self.driver.execute_script("arguments[0].click();", search_btn)
-            
+            # ==========================================================
+            # 🟢 1. (Human Style) กดปุ่มเมนู "ค้นประวัติ" เพื่อรีเซ็ตหน้าจอ
+            # ==========================================================
+            navigated = False
             try:
-                WebDriverWait(self.driver, 10).until(lambda d: "KeyWord" in d.current_url or "ResumeDetail" in d.page_source)
+                # ลองหาปุ่มตาม ID ที่คุณให้มา
+                home_btn = WebDriverWait(self.driver, 5).until(
+                    EC.element_to_be_clickable((By.XPATH, '//*[@id="company-search-resume"]'))
+                )
+                console.print("   🖱️ กดปุ่มเมนู 'ค้นประวัติ' (Human Style)...", style="dim")
+                
+                # ใช้ JS Click เพื่อความชัวร์ (กันเมนูโดนบัง)
+                self.driver.execute_script("arguments[0].click();", home_btn)
+                navigated = True
+                self.random_sleep(3, 5) # รอหน้าเว็บโหลดกลับมา
+            except Exception:
+                # ถ้าหาปุ่มไม่เจอ (เช่น หน้าเว็บ Error ขาวโพลน) ให้ใช้ URL ตรงๆ เป็นแผนสำรอง
+                console.print("   ⚠️ หาปุ่มเมนูไม่เจอ -> เข้า URL ตรงๆ แทน", style="dim")
+                self.driver.get(search_url)
+                self.random_sleep(3, 5)
+
+            # ==========================================================
+            # 🟢 2. รอช่องพิมพ์และยัด Keyword (JS Injection)
+            # ==========================================================
+            # รอให้เจอช่อง KeyWord (ยืนยันว่ากลับมาหน้าแรกจริง)
+            keyword_input = WebDriverWait(self.driver, 20).until(EC.presence_of_element_located((By.ID, "KeyWord")))
+            
+            # ล้างค่าเดิมด้วย JS (สะอาดหมดจด)
+            self.driver.execute_script("arguments[0].value = '';", keyword_input)
+            time.sleep(0.5)
+            
+            # ยัดคำค้นหาลงไป (วิธีนี้เสถียรที่สุดสำหรับบอท)
+            self.driver.execute_script("arguments[0].value = arguments[1];", keyword_input, keyword)
+            console.print(f"   ✍️ พิมพ์ '{keyword}' เรียบร้อย", style="dim")
+            time.sleep(1)
+            
+            # ==========================================================
+            # 🟢 3. กดปุ่มค้นหา
+            # ==========================================================
+            search_btn = self.driver.find_element(By.ID, "buttonsearch")
+            self.driver.execute_script("arguments[0].click();", search_btn)
+            
+            console.print("   🔍 กดปุ่มค้นหาแล้ว... รอผลลัพธ์...", style="dim")
+            time.sleep(5) 
+
+            # ==========================================================
+            # 🟢 4. ตรวจสอบผลลัพธ์
+            # ==========================================================
+            page_src = self.driver.page_source
+            
+            # กรณีไม่พบข้อมูล
+            if "ไม่พบข้อมูล" in page_src or "No data found" in page_src or "ไม่พบประวัติ" in page_src:
+                console.print(f"   ⚠️ ค้นหาแล้วไม่พบข้อมูล (0 Results) สำหรับ: {keyword}", style="warning")
+                return True 
+
+            # กรณีเจอข้อมูล (รอ ResumeDetail หรือ URL เปลี่ยน)
+            try:
+                WebDriverWait(self.driver, 15).until(lambda d: "ResumeDetail" in d.page_source or "KeyWord" in d.current_url)
+                console.print(f"   ✅ เจอผลการค้นหา!", style="success")
                 return True
             except:
-                keyword_input.send_keys(Keys.ENTER)
-                time.sleep(5)
-                if "KeyWord" in self.driver.current_url: return True
+                console.print("   ❌ รอผลลัพธ์นานเกินไป (Timeout)", style="error")
+                self.driver.save_screenshot(f"error_search_timeout_{keyword}.png")
                 return False
+
         except Exception as e:
             console.print(f"❌ Search Error ({keyword}): {e}", style="error")
+            self.driver.save_screenshot(f"error_search_{keyword}.png")
             return False
 
     def step3_collect_all_links(self):
