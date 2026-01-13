@@ -46,7 +46,7 @@ COMPETITORS_PATH = "compe.yaml"
 CLIENTS_PATH = "co.yaml"
 TIER1_PATH = "tier1.yaml"
 RESUME_IMAGE_FOLDER = "resume_images" 
-USE_HEADLESS_JOBTHAI = True 
+USE_HEADLESS_JOBTHAI = False # 🟢 ปรับเป็น False เพื่อใช้ Xvfb
 EMAIL_USE_HISTORY = False        
 
 rec_env = os.getenv("EMAIL_RECEIVER")
@@ -97,6 +97,7 @@ TARGET_UNIVERSITIES = ["แม่ฟ้าหลวง","มหาลัยแ�
 TARGET_FACULTIES = ["เครื่องสำอาง","Cosmetic Science"] 
 TARGET_MAJORS = ["เครื่องสำอาง", "วิทยาศาสตร์เครื่องสำอาง","Cosmetic Science", "Cosmetics", "Cosmetic"]
 SEARCH_KEYWORDS = ["แม่ฟ้าหลวง เครื่องสำอาง","Cosmetic Mae Fah Luang"]
+
 KEYWORDS_CONFIG = {
     "NPD": {"titles": ["NPD", "R&D", "RD", "Research", "Development", "วิจัย", "พัฒนา", "Formulation", "สูตร"]},
     "PCM": {"titles": ["PCM", "Production", "ผลิต", "Manufacturing", "Factory", "โรงงาน", "QA", "QC"]},
@@ -131,7 +132,7 @@ def analyze_row_department(row):
 
 class JobThaiRowScraper:
     def __init__(self):
-        console.rule("[bold cyan]🛡️ JobThai Scraper (Tank Edition v2.1)[/]")
+        console.rule("[bold cyan]🛡️ JobThai Scraper (Xvfb Edition)[/]")
         self.history_file = "notification_history_uni.json" 
         self.history_data = {}
         if not os.path.exists(RESUME_IMAGE_FOLDER): os.makedirs(RESUME_IMAGE_FOLDER, exist_ok=True)
@@ -145,7 +146,9 @@ class JobThaiRowScraper:
         else: self.ua = None
 
         opts = uc.ChromeOptions()
-        opts.add_argument('--headless=new') 
+        # 🟢 [CRITICAL CHANGE] ลบ headless ออก เพื่อให้รันแบบมีจอ (ผ่าน Xvfb)
+        # opts.add_argument('--headless=new')  <-- ลบทิ้งหรือ Comment ไว้
+        
         opts.add_argument('--window-size=1920,1080')
         opts.add_argument("--no-sandbox")
         opts.add_argument("--disable-dev-shm-usage")
@@ -153,8 +156,9 @@ class JobThaiRowScraper:
         opts.add_argument("--lang=th-TH")
         opts.add_argument("--disable-blink-features=AutomationControlled")
         opts.add_argument("--disable-notifications")
-        opts.add_argument("--dns-prefetch-disable")
-        opts.add_argument("--disable-gpu")
+        
+        # เพิ่ม Argument สำหรับ Xvfb ให้เสถียร
+        opts.add_argument("--start-maximized") 
         
         fake_user_agent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
         opts.add_argument(f'--user-agent={fake_user_agent}')
@@ -274,48 +278,17 @@ class JobThaiRowScraper:
             return ""
         except: return ""
 
-    # 🟢 Helper ใหม่: คลิกด้วย CDP (จำลองฮาร์ดแวร์ สร้าง isTrusted=true)
-    def cdp_click(self, element):
-        try:
-            # 1. หาพิกัดตรงกลางปุ่ม
-            rect = element.rect
-            x = rect['x'] + (rect['width'] / 2)
-            y = rect['y'] + (rect['height'] / 2)
-
-            # 2. จำลองกดเมาส์ลง (Mouse Pressed)
-            self.driver.execute_cdp_cmd("Input.dispatchMouseEvent", {
-                "type": "mousePressed",
-                "x": x,
-                "y": y,
-                "button": "left",
-                "clickCount": 1
-            })
-            
-            # 3. จำลองปล่อยเมาส์ (Mouse Released)
-            self.driver.execute_cdp_cmd("Input.dispatchMouseEvent", {
-                "type": "mouseReleased",
-                "x": x,
-                "y": y,
-                "button": "left",
-                "clickCount": 1
-            })
-            return True
-        except Exception as e:
-            console.print(f"   ❌ CDP Click Error: {e}", style="error")
-            return False
-
     # ==============================================================================
-    # 🔥 STEP 1 LOGIN: CDP INJECTION EDITION (จำลอง Hardware Event)
+    # 🔥 STEP 1: LOGIN (Xvfb Supported - กดปุ่มได้ชัวร์กว่า)
     # ==============================================================================
     def step1_login(self):
         login_url = "https://www.jobthai.com/th/employer"
         max_retries = 5 
         
         for attempt in range(1, max_retries + 1):
-            console.rule(f"[bold cyan]🔐 Login Attempt {attempt}/{max_retries} (CDP Mode)[/]")
+            console.rule(f"[bold cyan]🔐 Login Attempt {attempt}/{max_retries} (Xvfb Mode)[/]")
             
             try:
-                # 1. Reset Page
                 if attempt > 1:
                     console.print("   🔄 Refreshing...", style="yellow")
                     try: self.driver.refresh()
@@ -328,96 +301,90 @@ class JobThaiRowScraper:
                     self.wait_for_page_load()
                     self.random_sleep(3, 5)
 
-                # 2. NUKE OVERLAYS (เคลียร์พื้นที่ก่อนยิง CDP)
                 try:
                     self.driver.execute_script("var blockers=document.querySelectorAll('#close-button,.cookie-consent,[class*=\"pdpa\"],[class*=\"popup\"]');blockers.forEach(b=>b.remove());")
                 except: pass
 
-                # 3. เปิดเมนู Login (ด้วย CDP เพื่อความชัวร์)
+                # 3. Navigation (ActionChains = Human Mouse)
+                # เมื่อรันบน Xvfb เราสามารถใช้ ActionChains ได้เต็มประสิทธิภาพ
                 try:
+                    # A. กดปุ่มเมนู
                     if not self.driver.find_elements(By.CSS_SELECTOR, "input[type='password']"):
                         menu_sels = ['#menu-jobseeker-login', 'a[href*="login"]']
                         for sel in menu_sels:
                             try:
-                                elm = WebDriverWait(self.driver, 5).until(EC.visibility_of_element_located((By.CSS_SELECTOR, sel)))
-                                # ใช้ CDP Click แทนการคลิกธรรมดา
-                                if self.cdp_click(elm):
-                                    console.print(f"   🖱️ CDP Click เมนูสำเร็จ: {sel}", style="dim")
-                                    time.sleep(2)
+                                elm = WebDriverWait(self.driver, 5).until(EC.element_to_be_clickable((By.CSS_SELECTOR, sel)))
+                                ActionChains(self.driver).move_to_element(elm).click().perform()
+                                console.print(f"   🖱️ กดเมนูสำเร็จ: {sel}", style="dim")
+                                break
+                            except: continue
+                        self.random_sleep(2, 3)
+                    
+                    # B. กดแท็บ Employer
+                    tab_selectors = ['#login_tab_employer', 'li[data-tab="employer"]']
+                    for sel in tab_selectors:
+                        try:
+                            t_elm = WebDriverWait(self.driver, 5).until(EC.element_to_be_clickable((By.CSS_SELECTOR, sel)))
+                            ActionChains(self.driver).move_to_element(t_elm).click().perform()
+                            console.print("   👉 กดแท็บ Employer สำเร็จ", style="dim")
+                            break
+                        except: continue
+                    time.sleep(5) 
+
+                except Exception as e:
+                    console.print(f"   ⚠️ Navigation Warning: {e}", style="dim")
+
+                # 4. Input Scan
+                user_input_found = False
+                user_sels = ["#login-form-username", "input[name='username']", "input[type='email']"]
+                pass_sels = ["#login-form-password", "input[name='password']", "input[type='password']"]
+
+                def scan_and_fill():
+                    for us in user_sels:
+                        if self.safe_type(us, MY_USERNAME, By.CSS_SELECTOR, timeout=3):
+                            for ps in pass_sels:
+                                if self.safe_type(ps, MY_PASSWORD, By.CSS_SELECTOR, timeout=2):
+                                    try: 
+                                        self.driver.find_element(By.CSS_SELECTOR, ps).send_keys(Keys.ENTER)
+                                    except: pass
+                                    return True
+                    return False
+
+                if scan_and_fill():
+                    user_input_found = True
+                else:
+                    iframes = self.driver.find_elements(By.TAG_NAME, "iframe")
+                    if iframes:
+                        console.print(f"   👀 สแกน {len(iframes)} Iframes...", style="dim")
+                        for frame in iframes:
+                            try:
+                                self.driver.switch_to.default_content()
+                                self.driver.switch_to.frame(frame)
+                                if scan_and_fill():
+                                    console.print("   ✅ เจอช่องใน Iframe!", style="success")
+                                    user_input_found = True
                                     break
                             except: continue
-                except: pass
+                        if not user_input_found: self.driver.switch_to.default_content()
 
-                # ---------------------------------------------------------------
-                # 🟢 4. กดแท็บ Employer ด้วย CDP (พระเอกของงาน)
-                # ---------------------------------------------------------------
-                console.print("   ⚡ เตรียมยิง CDP Event ใส่แท็บ 'บริษัท'...", style="info")
+                # 5. Check Success
+                if user_input_found:
+                    console.print("   📝 กรอกแล้ว รอตรวจสอบ...", style="info")
+                    for _ in range(60):
+                        time.sleep(1)
+                        if "auth.jobthai.com" not in self.driver.current_url and "login" not in self.driver.current_url:
+                            console.print(f"🎉 Login สำเร็จ! (รอบที่ {attempt})", style="bold green")
+                            return True
                 
-                # Selector ที่แม่นยำ (เน้น ID หรือ Parent ที่เป็นปุ่มจริง)
-                tab_selectors = [
-                    "//*[@id='login_tab_employer']",          # ID ตรงๆ
-                    "//li[@data-tab='employer']",             # LI Wrapper
-                    "//div[contains(text(), 'บริษัท')]"       # Text fallback
-                ]
-                
-                form_ready = False
-                for i in range(3): # ลองยิง 3 รอบ
-                    for tab_sel in tab_selectors:
-                        try:
-                            # ต้องหา Element ให้เจอก่อน เพื่อเอาพิกัด
-                            elem = WebDriverWait(self.driver, 5).until(EC.visibility_of_element_located((By.XPATH, tab_sel)))
-                            
-                            # ยิง CDP!
-                            self.cdp_click(elem)
-                            
-                            # เช็คผลลัพธ์ทันที
-                            try:
-                                WebDriverWait(self.driver, 3).until(
-                                    EC.visibility_of_element_located((By.CSS_SELECTOR, "#login-form-username, input[name='username']"))
-                                )
-                                form_ready = True
-                                console.print("   ✅ CDP Click สำเร็จ! (isTrusted=true) เจอฟอร์มแล้ว", style="bold green")
-                                break
-                            except: pass
-                        except: continue
-                    
-                    if form_ready: break
-                    console.print(f"   💤 ยังไม่มา... ยิง CDP ซ้ำรอบที่ {i+1}...", style="dim")
-                    time.sleep(2)
-
-                # 5. กรอกรหัส (ถ้าฟอร์มมาแล้ว)
-                if form_ready or self.driver.find_elements(By.CSS_SELECTOR, "input[type='password']"):
-                    user_sels = ["#login-form-username", "input[name='username']"]
-                    pass_sels = ["#login-form-password", "input[name='password']"]
-                    
-                    def perform_login_fill():
-                        for us in user_sels:
-                            if self.safe_type(us, MY_USERNAME, By.CSS_SELECTOR, timeout=2):
-                                for ps in pass_sels:
-                                    if self.safe_type(ps, MY_PASSWORD, By.CSS_SELECTOR, timeout=2):
-                                        try: self.driver.find_element(By.CSS_SELECTOR, ps).send_keys(Keys.ENTER)
-                                        except: pass
-                                        return True
-                        return False
-
-                    if perform_login_fill():
-                        console.print("   📝 กรอกรหัสแล้ว รอตรวจสอบ...", style="info")
-                        for _ in range(60):
-                            time.sleep(1)
-                            if "auth.jobthai.com" not in self.driver.current_url and "login" not in self.driver.current_url:
-                                console.print(f"🎉 Login สำเร็จ! (รอบที่ {attempt})", style="bold green")
-                                return True
-                else:
-                    console.print(f"   ❌ CDP Click ทำงานแล้วแต่ฟอร์มยังไม่มา", style="bold red")
-                    self.driver.save_screenshot(f"debug_cdp_fail_attempt_{attempt}.png")
+                console.print(f"   ❌ รอบที่ {attempt} ล้มเหลว", style="bold red")
+                self.driver.save_screenshot(f"xvfb_fail_attempt_{attempt}.png")
 
             except Exception as e:
                 console.print(f"   ⚠️ Error รอบที่ {attempt}: {e}", style="warning")
         
-        console.print("🔄 ไม่ไหวแล้ว... ใช้ Cookie Bypass...", style="bold yellow")
+        console.print("🔄 ใช้แผนสำรอง Cookie Bypass...", style="bold yellow")
         return self.login_with_cookie()
 
-    # 🟢 Helper: ฟังก์ชัน Cookie (ที่เพิ่มเข้ามาแก้ Error)
     def login_with_cookie(self):
         cookies_env = os.getenv("COOKIES_JSON")
         if not cookies_env: 
@@ -447,8 +414,6 @@ class JobThaiRowScraper:
         console.print(f"2️⃣   ค้นหา: '[bold]{keyword}[/]' ...", style="info")
         
         try:
-            # ... (ส่วน Reset Page และพิมพ์ Keyword คงเดิม) ...
-            # ก๊อปปี้ส่วนบนมาวาง หรือใช้ของเดิมจนถึงบรรทัดกดปุ่ม Search
             reset_success = False
             try:
                 if self.safe_click('//*[@id="company-search-resume"]', By.XPATH, timeout=5):
@@ -478,9 +443,7 @@ class JobThaiRowScraper:
 
             # 🟢 [แก้] เช็ค 0 Results ให้แม่นขึ้น (ดูที่เนื้อหา ไม่ใช่ Source รวม)
             try:
-                # ลองหาข้อความแจ้งเตือน "ไม่พบข้อมูล" ที่เป็น Element จริงๆ
                 no_data = self.driver.find_elements(By.XPATH, "//*[contains(text(), 'ไม่พบข้อมูล') or contains(text(), 'No data found')]")
-                # ต้องเป็นข้อความที่เห็นชัดๆ ตรงกลางจอ (ไม่ใช่ hidden)
                 if no_data and no_data[0].is_displayed():
                     console.print(f"   ⚠️ ไม่พบข้อมูล (0 Results) สำหรับ: {keyword}", style="warning")
                     return True 
@@ -495,9 +458,9 @@ class JobThaiRowScraper:
                 return False
 
         except Exception as e:
-            console.print(f"❌ Search Error: {e}", style="error")
+            console.print(f"❌ Search Error ({keyword}): {e}", style="error")
             return False
-            
+
     def step3_collect_all_links(self):
         collected_links = []
         page_num = 1
@@ -546,7 +509,6 @@ class JobThaiRowScraper:
         printer = progress_console if progress_console else console
         self.set_random_user_agent()
         
-        # ... (ส่วนโหลดหน้าเว็บ คงเดิม) ...
         max_retries = 3
         load_success = False
         for attempt in range(max_retries):
@@ -558,6 +520,7 @@ class JobThaiRowScraper:
             except: self.random_sleep(5, 10)
 
         if not load_success: return None, 999, None
+        
         try: self.human_scroll() 
         except: pass
         self.random_sleep(2.0, 5.0)
@@ -572,7 +535,6 @@ class JobThaiRowScraper:
                 return elem.text.strip()
             except: return ""
 
-        # ... (ส่วน XPath ตารางการศึกษา คงเดิม) ...
         edu_tables_xpath = '//*[@id="mainTableTwoColumn"]/tbody/tr/td[1]/table/tbody/tr[7]/td[2]/table'
         try:
             edu_tables = self.driver.find_elements(By.XPATH, edu_tables_xpath)
@@ -582,8 +544,7 @@ class JobThaiRowScraper:
         highest_degree_text = "-"; max_degree_score = -1
         degree_score_map = {"ปริญญาเอก": 3, "ดุษฎีบัณฑิต": 3, "Doctor": 3, "Ph.D": 3, "ปริญญาโท": 2, "มหาบัณฑิต": 2, "Master": 2, "ปริญญาตรี": 1, "บัณฑิต": 1, "Bachelor": 1}
         
-        # 🟢 [แก้] ปรับ Threshold ลดลงนิดนึง (จาก 95 เหลือ 85) เผื่อมีวรรคตอนเพี้ยน
-        def check_fuzzy(scraped_text, target_list, threshold=85): 
+        def check_fuzzy(scraped_text, target_list, threshold=85): # ลด Threshold
             if not target_list: return True
             if not scraped_text: return False
             best_score = 0
@@ -593,8 +554,7 @@ class JobThaiRowScraper:
             if best_score >= threshold: return True
             return False 
 
-        # ตัวแปรเก็บค่า Debug (เอาไว้โชว์ว่ามันเจออะไรบ้างในคนคนนี้)
-        debug_edu_list = [] 
+        debug_edu_list = [] # เพิ่ม Debug
 
         for i in range(1, total_degrees + 1):
             base_xpath = f'//*[@id="mainTableTwoColumn"]/tbody/tr/td[1]/table/tbody/tr[7]/td[2]/table[{i}]'
@@ -607,7 +567,6 @@ class JobThaiRowScraper:
             curr_faculty = get_val(f'{base_xpath}//td[contains(., "คณะ")]/following-sibling::td[1]', True)
             curr_major = get_val(f'{base_xpath}//td[contains(., "สาขา")]/following-sibling::td[1]', True)
             
-            # เก็บข้อมูลไว้ Debug
             debug_edu_list.append(f"[{curr_degree}] {curr_uni} / {curr_faculty} / {curr_major}")
 
             score = 0
@@ -620,20 +579,14 @@ class JobThaiRowScraper:
                 uni_pass = check_fuzzy(curr_uni, TARGET_UNIVERSITIES)
                 fac_pass = check_fuzzy(curr_faculty, TARGET_FACULTIES)
                 major_pass = check_fuzzy(curr_major, TARGET_MAJORS)
-                
                 if uni_pass and (fac_pass or major_pass):
                     is_qualified = True; matched_uni = curr_uni; matched_faculty = curr_faculty; matched_major = curr_major
 
-        # 🟢 [แก้] เพิ่ม Log Debug กรณีไม่ผ่าน
         if not is_qualified:
-            # ปริ้นท์ออกมาดูเลยว่าทำไมไม่ผ่าน (จะได้รู้ว่าดึงค่าว่าง หรือชื่อไม่ตรง)
-            if debug_edu_list:
-                printer.print(f"   ❄️ (Skip) ไม่ตรงเงื่อนไข: {debug_edu_list}", style="dim")
-            else:
-                printer.print(f"   ❄️ (Skip) ไม่พบข้อมูลการศึกษา หรือ XPath ผิด", style="dim")
+            # เปิด Debug เพื่อดูว่าทำไมไม่ผ่าน (ถ้าต้องการ)
+            # printer.print(f"   ❄️ (Skip) {debug_edu_list}", style="dim")
             return None, 999, None
         
-        # ... (ส่วนดึงข้อมูลอื่นๆ คงเดิม ไปจนจบฟังก์ชัน) ...
         data['ระดับการศึกษา'] = highest_degree_text; data['มหาลัย'] = matched_uni; data['คณะ'] = matched_faculty; data['สาขา'] = matched_major
         data['รหัสใบสมัคร'] = get_val("#ResumeViewDiv [align='left'] span.white")
         
@@ -767,6 +720,7 @@ class JobThaiRowScraper:
         printer.print(f"   🔥 เจอ: {highest_degree_text} | มหาลัย: {matched_uni} | วันที่: {days_diff} วันก่อน", style="bold green")
         return data, days_diff, person_data
     
+    # ... (ส่วน send_single_email, send_batch_email, save_to_google_sheets คงเดิม) ...
     def send_single_email(self, subject_prefix, people_list, col_header="เคยทำงานบริษัท"):
         sender = os.getenv("EMAIL_SENDER")
         password = os.getenv("EMAIL_PASSWORD")
