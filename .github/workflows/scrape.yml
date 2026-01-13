@@ -33,12 +33,12 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y google-chrome-stable
 
-      # 4. Install Xvfb and dependencies (แก้ไข: ลบ libgconf-2-4 ออก)
+      # 4. Install Xvfb and dependencies (แก้ไขชื่อแพ็กเกจสำหรับ Ubuntu 24.04)
       - name: Install Xvfb and Dependencies
         run: |
           sudo apt-get update
-          # ลบ libgconf-2-4 ออกเพราะ Ubuntu 24.04 ไม่มีแล้ว และ Chrome ใหม่ไม่ต้องใช้
-          sudo apt-get install -y xvfb libnss3 libasound2 libgbm1
+          # เปลี่ยน libasound2 เป็น libasound2t64 ตามมาตรฐานใหม่ของ Ubuntu Noble
+          sudo apt-get install -y xvfb libnss3 libasound2t64 libgbm1
 
       # 5. Install Python libraries
       - name: Install dependencies
