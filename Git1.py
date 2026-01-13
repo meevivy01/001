@@ -18,6 +18,7 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
+from selenium.common.exceptions import TimeoutException, StaleElementReferenceException, ElementClickInterceptedException
 from selenium.webdriver.common.action_chains import ActionChains
 from dotenv import load_dotenv
 from thefuzz import fuzz 
@@ -46,7 +47,7 @@ CLIENTS_PATH = "co.yaml"
 TIER1_PATH = "tier1.yaml"
 RESUME_IMAGE_FOLDER = "resume_images" 
 USE_HEADLESS_JOBTHAI = True 
-EMAIL_USE_HISTORY = False       
+EMAIL_USE_HISTORY = False        
 
 rec_env = os.getenv("EMAIL_RECEIVER")
 MANUAL_EMAIL_RECEIVERS = [rec_env] if rec_env else []
@@ -69,12 +70,9 @@ if os.path.exists(TIER1_PATH):
             if yaml_data:
                 for k, v in yaml_data.items():
                     if v:
-                        if isinstance(v, list):
-                            TIER1_TARGETS[k] = [str(x).strip() for x in v]
-                        else:
-                            TIER1_TARGETS[k] = [str(v).strip()]
-    except Exception as e:
-        console.print(f"⚠️ Load Tier1 Error: {e}", style="yellow")
+                        if isinstance(v, list): TIER1_TARGETS[k] = [str(x).strip() for x in v]
+                        else: TIER1_TARGETS[k] = [str(v).strip()]
+    except Exception as e: console.print(f"⚠️ Load Tier1 Error: {e}", style="yellow")
 
 TARGET_COMPETITORS_TIER2 = [] 
 if os.path.exists(COMPETITORS_PATH):
@@ -99,7 +97,6 @@ TARGET_UNIVERSITIES = ["แม่ฟ้าหลวง","มหาลัยแ�
 TARGET_FACULTIES = ["เครื่องสำอาง","Cosmetic Science"] 
 TARGET_MAJORS = ["เครื่องสำอาง", "วิทยาศาสตร์เครื่องสำอาง","Cosmetic Science", "Cosmetics", "Cosmetic"]
 SEARCH_KEYWORDS = ["แม่ฟ้าหลวง เครื่องสำอาง","Cosmetic Mae Fah Luang"]
-
 KEYWORDS_CONFIG = {
     "NPD": {"titles": ["NPD", "R&D", "RD", "Research", "Development", "วิจัย", "พัฒนา", "Formulation", "สูตร"]},
     "PCM": {"titles": ["PCM", "Production", "ผลิต", "Manufacturing", "Factory", "โรงงาน", "QA", "QC"]},
@@ -134,7 +131,7 @@ def analyze_row_department(row):
 
 class JobThaiRowScraper:
     def __init__(self):
-        console.rule("[bold cyan]🔧 JobThai Scraper (Google Sheets Edition)...[/]")
+        console.rule("[bold cyan]🛡️ JobThai Scraper (Tank Edition v2.1)[/]")
         self.history_file = "notification_history_uni.json" 
         self.history_data = {}
         if not os.path.exists(RESUME_IMAGE_FOLDER): os.makedirs(RESUME_IMAGE_FOLDER, exist_ok=True)
@@ -153,14 +150,21 @@ class JobThaiRowScraper:
         opts.add_argument("--no-sandbox")
         opts.add_argument("--disable-dev-shm-usage")
         opts.add_argument("--disable-popup-blocking")
+        opts.add_argument("--lang=th-TH")
+        opts.add_argument("--disable-blink-features=AutomationControlled")
+        opts.add_argument("--disable-notifications")
+        opts.add_argument("--dns-prefetch-disable")
+        opts.add_argument("--disable-gpu")
+        
         fake_user_agent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
         opts.add_argument(f'--user-agent={fake_user_agent}')
         
         try: self.driver = uc.Chrome(options=opts, use_subprocess=True)
         except: self.driver = uc.Chrome(options=opts, use_subprocess=True)
+        
+        self.driver.set_page_load_timeout(60) 
         self.wait = WebDriverWait(self.driver, 20)
         self.total_profiles_viewed = 0 
-        
         self.all_scraped_data = []
 
     def save_history(self):
@@ -174,7 +178,60 @@ class JobThaiRowScraper:
             try: self.driver.execute_cdp_cmd('Network.setUserAgentOverride', {"userAgent": self.ua.random})
             except: pass
 
-    def random_sleep(self, min_t=2.0, max_t=5.0): time.sleep(random.uniform(min_t, max_t))
+    def random_sleep(self, min_t=4.0, max_t=7.0): time.sleep(random.uniform(min_t, max_t))
+
+    def wait_for_page_load(self, timeout=10):
+        try:
+            WebDriverWait(self.driver, timeout).until(
+                lambda d: d.execute_script("return document.readyState") == "complete"
+            )
+        except: pass
+
+    def safe_click(self, selector, by=By.XPATH, timeout=10):
+        end_time = time.time() + timeout
+        while time.time() < end_time:
+            try:
+                element = WebDriverWait(self.driver, 2).until(EC.presence_of_element_located((by, selector)))
+                self.driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", element)
+                time.sleep(0.5)
+                element.click()
+                return True
+            except ElementClickInterceptedException:
+                try:
+                    element = self.driver.find_element(by, selector)
+                    self.driver.execute_script("arguments[0].click();", element)
+                    return True
+                except: pass
+            except: pass
+            time.sleep(1)
+        return False
+
+    def safe_type(self, selector, text, by=By.CSS_SELECTOR, timeout=10):
+        try:
+            element = WebDriverWait(self.driver, timeout).until(EC.element_to_be_clickable((by, selector)))
+            try:
+                element.click()
+                element.clear()
+            except: pass
+            try:
+                element.send_keys(text)
+            except:
+                self.driver.execute_script("arguments[0].value = arguments[1];", element, text)
+            return True
+        except: return False
+
+    def human_scroll(self):
+        try:
+            total_height = self.driver.execute_script("return document.body.scrollHeight")
+            current_position = 0
+            while current_position < total_height:
+                scroll_step = random.randint(300, 700)
+                current_position += scroll_step
+                self.driver.execute_script(f"window.scrollTo(0, {current_position});")
+                time.sleep(random.uniform(0.1, 0.4))
+            time.sleep(0.5)
+            self.driver.execute_script("window.scrollTo(0, 0);")
+        except: pass
 
     def parse_thai_date_exact(self, date_str):
         if not date_str: return None
