@@ -95,8 +95,8 @@ if os.path.exists(CLIENTS_PATH):
 
 # --- TARGET CONFIG ---
 TARGET_UNIVERSITIES = ["แม่ฟ้าหลวง","มหาลัยแม่ฟ้าหลวง", "Mae Fah Luang University"]  
-TARGET_FACULTIES = ["เครื่องสำอาง","Cosmetic Science","ความงาม","Beauty"] 
-TARGET_MAJORS = ["เครื่องสำอาง", "วิทยาศาสตร์เครื่องสำอาง","Cosmetic Science", "Cosmetics", "Cosmetic","ความงาม","Beauty"]
+TARGET_FACULTIES = ["เครื่องสำอาง","Cosmetic Science","ความงาม"] 
+TARGET_MAJORS = ["เครื่องสำอาง", "วิทยาศาสตร์เครื่องสำอาง","Cosmetic Science", "Cosmetics", "Cosmetic","ความงาม"]
 SEARCH_KEYWORDS = ["แม่ฟ้าหลวง เครื่องสำอาง"] #"Cosmetic Mae Fah Luang", "Technology Mae Fah Luang"
 
 
