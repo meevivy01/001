@@ -560,32 +560,49 @@ class JobThaiRowScraper:
             
         try:
             console.print("🍪 กำลังโหลด Cookie...", style="info")
+            
+            # 1. เข้าหน้าเว็บเปล่าๆ ของ Domain นั้นก่อน (สำคัญมาก เพื่อให้ Domain scope ตรงกัน)
             self.driver.get("https://www.jobthai.com/th/employer")
             self.random_sleep(2, 3)
+            
+            # 2. ลบ Cookie เดิมที่ติดมากับ Session ใหม่ทิ้งให้หมด
             self.driver.delete_all_cookies()
             
+            # 3. แปลงและยัด Cookie
             cookies_list = json.loads(cookies_env)
             for cookie in cookies_list:
+                # คัดเฉพาะ Key ที่ Selenium รองรับ (ถ้าเอา key แปลกๆ ไปด้วย จะ Error)
                 cookie_dict = {
                     'name': cookie.get('name'),
                     'value': cookie.get('value'),
-                    'domain': cookie.get('domain'), 
+                    'domain': cookie.get('domain'), # สำคัญ: ต้องตรงกับเว็บที่เปิด
                     'path': cookie.get('path', '/'),
+                    # 'secure': cookie.get('secure', False), # บางทีใส่ Secure แล้วพัง ถ้าเว็บไม่ strict ให้ comment ออก
+                    # 'expiry': cookie.get('expirationDate') # ไม่ต้องใส่ expiry ก็ได้ ถ้าอยากให้เป็น Session Cookie
                 }
+                
+                # Fix Domain: บางที Cookie มาเป็น .jobthai.com แต่เราเข้า www.jobthai.com
+                # ให้ตัดจุดข้างหน้าออกเพื่อความชัวร์
                 if 'jobthai' in str(cookie_dict['domain']):
                     try:
                         self.driver.add_cookie(cookie_dict)
-                    except Exception as e: pass
+                    except Exception as e:
+                        # ถ้า add ไม่เข้า ข้ามไป (บางอันเป็น 3rd party cookie)
+                        pass
             
             console.print("   ✅ ยัด Cookie เสร็จแล้ว -> Refresh หน้าจอ", style="dim")
+            
+            # 4. Refresh เพื่อให้ Cookie ทำงาน
             self.driver.refresh()
             self.wait_for_page_load()
             self.random_sleep(3, 5)
 
+            # 5. เช็คว่าเข้าได้จริงไหม
             if "login" not in self.driver.current_url and "dashboard" in self.driver.current_url:
                 console.print("🎉 Bypass Login สำเร็จด้วย Cookie!", style="success")
                 return True
             else:
+                # ลองไปหน้า Resume โดยตรงอีกทีเพื่อความชัวร์
                 self.driver.get("https://www3.jobthai.com/findresume/findresume.php?l=th")
                 self.random_sleep(2, 3)
                 if "login" not in self.driver.current_url:
@@ -594,13 +611,16 @@ class JobThaiRowScraper:
 
         except Exception as e:
             console.print(f"❌ Cookie Error: {e}", style="error")
+        
         return False
 
     def step2_search(self, keyword):
+        # URL หน้าค้นหา Resume (ระบบเดิม www3)
         search_url = "https://www3.jobthai.com/findresume/findresume.php?l=th"
         console.rule(f"[bold cyan]2️⃣  ขั้นตอนค้นหา: '{keyword}'[/]")
         
         try:
+            # 1. เช็คว่าอยู่หน้าค้นหาหรือยัง? ถ้ายัง ให้ Force Navigate
             current_url = self.driver.current_url
             if "findresume.php" not in current_url:
                 console.print(f"   🔗 ไม่อยู่หน้าค้นหา (อยู่ที่: {current_url}) -> กำลัง Force Redirect...", style="yellow")
@@ -608,13 +628,16 @@ class JobThaiRowScraper:
                 self.wait_for_page_load()
                 self.random_sleep(3, 5)
 
+            # 2. เช็คว่าโดนดีดกลับหน้า Login หรือไม่?
             if "login" in self.driver.current_url:
                 raise Exception("Cookie หลุด/ไม่ครอบคลุม -> ระบบดีดกลับมาหน้า Login")
 
+            # 3. เคลียร์ Popup
             try:
                 self.driver.execute_script("document.querySelectorAll('#close-button,.cookie-consent,[class*=\"pdpa\"],.modal-backdrop,iframe').forEach(b=>b.remove());")
             except: pass
 
+            # 4. รีเซ็ตปุ่มค้นหา (ถ้ามี)
             try:
                 reset_btn = self.driver.find_element(By.XPATH, '//*[@id="company-search-resume"]')
                 if reset_btn.is_displayed():
@@ -622,13 +645,16 @@ class JobThaiRowScraper:
                     time.sleep(2)
             except: pass
 
+            # 5. หาช่องพิมพ์ (รอสูงสุด 20 วินาที)
             console.print("   ✍️ กำลังหาช่องพิมพ์...", style="dim")
             kw_element = WebDriverWait(self.driver, 20).until(
                 EC.visibility_of_element_located((By.ID, "KeyWord"))
             )
             
+            # 6. พิมพ์คำค้นหา
             kw_element.click()
             kw_element.clear()
+            # ใช้ JS พิมพ์เพื่อความชัวร์
             self.driver.execute_script("arguments[0].value = arguments[1];", kw_element, keyword)
             time.sleep(0.5)
             self.driver.execute_script("arguments[0].dispatchEvent(new Event('input'));", kw_element)
@@ -636,14 +662,17 @@ class JobThaiRowScraper:
             console.print(f"   ✅ พิมพ์ '{keyword}' เรียบร้อย", style="info")
             time.sleep(1)
             
+            # 7. กดปุ่มค้นหา
             search_btn = self.driver.find_element(By.ID, "buttonsearch")
             self.driver.execute_script("arguments[0].click();", search_btn)
             console.print("   🔍 กดปุ่มค้นหาแล้ว รอผลลัพธ์...", style="dim")
             
+            # 8. รอผลลัพธ์
             WebDriverWait(self.driver, 20).until(
                 lambda d: "ResumeDetail" in d.page_source or "ไม่พบข้อมูล" in d.page_source or "No data found" in d.page_source
             )
 
+            # 9. เช็คผลลัพธ์
             if "ไม่พบข้อมูล" in self.driver.page_source or "No data found" in self.driver.page_source:
                 console.print(f"   ⚠️ ไม่พบข้อมูล (0 Results) สำหรับ: {keyword}", style="warning")
                 return True
@@ -652,16 +681,24 @@ class JobThaiRowScraper:
             return True
 
         except Exception as e:
+            # =======================================================
+            # 🚨 ERROR LOGGING SECTION (ส่วนที่เพิ่มใหม่)
+            # =======================================================
             timestamp = datetime.datetime.now().strftime("%H%M%S")
             err_img_name = f"error_search_{keyword}_{timestamp}.png"
+            
             curr_url = self.driver.current_url
             curr_title = self.driver.title
+            
             console.print(f"\n[bold red]❌ Search Error ({keyword})[/]")
             console.print(f"   📖 คำอธิบาย Error: {e}")
             console.print(f"   🔗 ลิงก์หน้าเว็บปัจจุบัน: {curr_url}")
             console.print(f"   👀 ชื่อหน้าเว็บ (Title): {curr_title}")
+            
+            # Save Screenshot
             self.driver.save_screenshot(err_img_name)
             console.print(f"   📸 บันทึกหลักฐานภาพถ่ายไว้ที่: [bold yellow]{err_img_name}[/]\n")
+            
             return False
 
     def step3_collect_all_links(self):
