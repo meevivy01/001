@@ -290,11 +290,11 @@ class JobThaiRowScraper:
         max_retries = 3
 
         for attempt in range(1, max_retries + 1):
-            console.rule(f"[bold cyan]🔐 Login Attempt {attempt}/{max_retries} (Specific Manual Flow)[/]")
+            console.rule(f"[bold cyan]🔐 Login Attempt {attempt}/{max_retries} (Refresh on Fail Mode)[/]")
             
             try:
                 # ==============================================================================
-                # 🛑 Helper: ฟังก์ชันกำจัดสิ่งกีดขวาง (เรียกใช้ตลอดเวลา)
+                # 🛑 Helper: ฟังก์ชันกำจัดสิ่งกีดขวาง
                 # ==============================================================================
                 def kill_blockers():
                     try:
@@ -311,7 +311,7 @@ class JobThaiRowScraper:
                     self.driver.get(start_url)
                     self.wait_for_page_load()
                     self.random_sleep(3, 4)
-                    kill_blockers() # เคลียร์ทางครั้งที่ 1
+                    kill_blockers()
                     console.print(f"      ✅ เข้าหน้าเว็บสำเร็จ (Title: {self.driver.title})", style="green")
                 except Exception as e:
                     raise Exception(f"เข้าเว็บไม่สำเร็จ: {e}")
@@ -323,33 +323,22 @@ class JobThaiRowScraper:
                 
                 link_found = False
                 actions = ActionChains(self.driver)
-                
-                # คลิก Body เพื่อ Reset Focus
                 self.driver.find_element(By.TAG_NAME, 'body').click()
                 
-                # วนลูปกด Tab สูงสุด 150 ครั้ง
                 for i in range(150):
-                    kill_blockers() # เคลียร์ทางระหว่างกด
+                    kill_blockers()
                     actions.send_keys(Keys.TAB).perform()
-                    
-                    # เช็คว่า Focus อยู่ที่ไหน
                     active_href = self.driver.execute_script("return document.activeElement.href;")
                     
-                    # ถ้าเจอลิงก์เป้าหมาย
                     if active_href and target_login_link in str(active_href):
                         console.print(f"      ✅ เจอปุ่มเป้าหมายแล้ว! (กด Tab ครั้งที่ {i+1})", style="bold green")
-                        console.print(f"      🔗 Link: {active_href}", style="dim")
-                        
-                        # กด Enter
                         actions.send_keys(Keys.ENTER).perform()
                         link_found = True
                         time.sleep(3) # รอ Modal เด้ง
                         break
-                    
-                    time.sleep(0.05) # กดเร็วๆ
+                    time.sleep(0.05)
 
                 if not link_found:
-                    # ถ้าไม่เจอ ลองใช้ JS กดตรงๆ (Fallback)
                     console.print("      ⚠️ กด Tab ไม่เจอ (จะลองใช้ JS กดแทน)", style="yellow")
                     found_by_js = self.driver.execute_script(f"""
                         var links = document.querySelectorAll('a');
@@ -370,7 +359,6 @@ class JobThaiRowScraper:
                 console.print("   3️⃣  กำลังหาปุ่ม 'หาคน' (Employer Tab)...", style="dim")
                 kill_blockers()
                 
-                # รอให้ Modal เด้ง
                 try:
                     WebDriverWait(self.driver, 10).until(
                         EC.visibility_of_element_located((By.XPATH, "//*[@id='login_tab_employer']"))
@@ -379,19 +367,16 @@ class JobThaiRowScraper:
                     console.print("      ⚠️ ไม่เห็นปุ่ม ID login_tab_employer (อาจโดนบัง หรือ Modal ไม่มา)", style="red")
 
                 clicked_tab = False
-                # รายชื่อ Selector ที่เป็นไปได้ทั้งหมดตามคำสั่ง
                 employer_selectors = [
-                    (By.XPATH, "//*[@id='login_tab_employer']"), # ตามคำสั่ง
-                    (By.XPATH, "//span[contains(text(), 'หาคน')]"), # ตามคำ "หาคน"
-                    (By.CSS_SELECTOR, "div#login_tab_employer"), # CSS ID
-                    (By.CLASS_NAME, "login__Tab-sc-1vw2cmp-10") # Class
+                    (By.XPATH, "//*[@id='login_tab_employer']"),
+                    (By.XPATH, "//span[contains(text(), 'หาคน')]"),
+                    (By.CSS_SELECTOR, "div#login_tab_employer")
                 ]
 
                 for by, val in employer_selectors:
                     try:
                         elem = self.driver.find_element(by, val)
                         if elem.is_displayed():
-                            # ใช้ JS Click เพื่อความชัวร์ (เพราะ SVG อาจบัง)
                             self.driver.execute_script("arguments[0].click();", elem)
                             clicked_tab = True
                             console.print(f"      ✅ กดปุ่ม 'หาคน' สำเร็จ (ด้วย Selector: {val})", style="bold green")
@@ -403,10 +388,42 @@ class JobThaiRowScraper:
                     raise Exception("หาปุ่ม 'หาคน' ไม่เจอ หรือกดไม่ได้")
 
                 # ==============================================================================
-                # 4️⃣ STEP 4: กรอกข้อมูล & กดปุ่ม (Target ID: login_company)
+                # 4️⃣ STEP 4: กรอกข้อมูล & "รอ" กดปุ่ม (Target ID: login_company)
+                # 🔥 เพิ่ม Logic: ถ้าหาปุ่มไม่เจอ -> Refresh 1 ที
                 # ==============================================================================
-                console.print("   4️⃣  กำลังกรอกข้อมูลและกดปุ่ม Submit (Target: login_company)...", style="dim")
+                console.print("   4️⃣  กำลังกรอกข้อมูลและกดปุ่ม Submit...", style="dim")
                 kill_blockers()
+
+                # --- 🔄 Logic เช็คปุ่มและ Refresh ---
+                try:
+                    # รอบแรก: รอ 5 วินาที
+                    WebDriverWait(self.driver, 5).until(
+                        EC.presence_of_element_located((By.ID, "login_company"))
+                    )
+                except:
+                    # ⚠️ ถ้าไม่เจอ: Refresh แล้วลองใหม่
+                    console.print("      ⚠️ หาปุ่ม Login ไม่เจอ -> 🔄 Refresh หน้าจอ 1 ครั้ง...", style="bold yellow")
+                    self.driver.refresh()
+                    self.wait_for_page_load()
+                    time.sleep(3)
+                    kill_blockers()
+
+                    # ต้องกดปุ่ม 'หาคน' ใหม่ด้วยเพราะหน้าเว็บรีเฟรช
+                    try:
+                        tab = self.driver.find_element(By.XPATH, "//*[@id='login_tab_employer']")
+                        self.driver.execute_script("arguments[0].click();", tab)
+                        time.sleep(2)
+                    except: pass
+                    
+                    # รอบสอง: รออีกที (10 วินาที)
+                    try:
+                        WebDriverWait(self.driver, 10).until(
+                            EC.presence_of_element_located((By.ID, "login_company"))
+                        )
+                        console.print("      ✅ ปุ่มมาแล้วหลัง Refresh!", style="green")
+                    except:
+                        console.print("      ⚠️ ยังหาปุ่มไม่เจออยู่ดี (จะลองเสี่ยงกดด้วย JS)", style="red")
+                # ----------------------------------------
 
                 js_fill_and_click = """
                     var user = document.getElementById('login-form-username');
@@ -445,14 +462,14 @@ class JobThaiRowScraper:
                     var clicked = false;
                     var method = "none";
                     
-                    // 1. ลองกดปุ่ม ID login_company ก่อน (Priority สูงสุด)
+                    // 1. ลองกดปุ่ม ID login_company ก่อน
                     var targetBtn = document.getElementById('login_company');
                     if (targetBtn) {
                         targetBtn.click();
                         clicked = true;
                         method = "id_match";
                     } 
-                    // 2. ถ้าไม่เจอ ให้วนหาปุ่มทั่วไป (Fallback)
+                    // 2. ถ้าไม่เจอ ให้วนหาปุ่มทั่วไป
                     else {
                         var btns = document.querySelectorAll('button');
                         for (var i=0; i<btns.length; i++) {
@@ -477,17 +494,21 @@ class JobThaiRowScraper:
                         msg_style = "green" if method_used == "id_match" else "yellow"
                         console.print(f"      ✅ กรอกรหัสและกดปุ่มสำเร็จ! (Method: {method_used})", style=msg_style)
                     else:
-                        console.print("      ⚠️ กรอกเสร็จแต่หาปุ่มกดไม่เจอ -> ลองกด Enter", style="yellow")
-                        ActionChains(self.driver).send_keys(Keys.ENTER).perform()
+                        console.print("      ⚠️ หาปุ่มไม่เจอ -> Focus ช่องรหัสแล้วกด Enter", style="yellow")
+                        try:
+                            pass_elem = self.driver.find_element(By.ID, "login-form-password")
+                            pass_elem.click() 
+                            pass_elem.send_keys(Keys.ENTER)
+                        except:
+                            ActionChains(self.driver).send_keys(Keys.ENTER).perform()
                 else:
-                    raise Exception("หาช่อง Input ไม่เจอ (Script ทำงานไม่สมบูรณ์)")
+                    raise Exception("หาช่อง Input ไม่เจอ")
 
                 # ==============================================================================
-                # 5️⃣ STEP 5: ตรวจสอบผลลัพธ์ (แก้ Bug False Positive)
+                # 5️⃣ STEP 5: ตรวจสอบผลลัพธ์
                 # ==============================================================================
                 console.print("   5️⃣  ตรวจสอบผลลัพธ์...", style="dim")
                 
-                # เพิ่มเวลารอให้ Redirect เสร็จสมบูรณ์
                 try:
                     WebDriverWait(self.driver, 15).until(
                         lambda d: "auth.jobthai.com" not in d.current_url and "login" not in d.current_url
@@ -496,10 +517,6 @@ class JobThaiRowScraper:
 
                 curr_url = self.driver.current_url.lower()
                 
-                # ✅ เงื่อนไขความสำเร็จที่ถูกต้อง (แก้ใหม่)
-                # 1. ต้องเข้า Dashboard ได้
-                # 2. หรือเข้าหน้า Resume Search (findresume) ได้
-                # 3. ต้องไม่อยู่ที่หน้า auth หรือ login
                 is_auth_page = "auth.jobthai.com" in curr_url or "login" in curr_url
                 is_success_page = "employer/dashboard" in curr_url or "findresume" in curr_url or ("resume" in curr_url and not is_auth_page)
 
@@ -507,7 +524,6 @@ class JobThaiRowScraper:
                     console.print(f"🎉 Login สำเร็จ! (URL: {curr_url})", style="bold green")
                     return True
                 else:
-                    # อ่าน Error บนหน้าจอ
                     error_msg = "หาสาเหตุไม่พบ (อาจเป็นเพราะกดปุ่มไม่ติด หรือหน้าเว็บโหลดไม่เสร็จ)"
                     try:
                         error_elem = self.driver.execute_script("""
@@ -521,12 +537,8 @@ class JobThaiRowScraper:
                     raise Exception(f"Login Failed - Stuck at {curr_url}")
 
             except Exception as e:
-                # ❌ LOGGING เมื่อพัง
                 console.print(f"\n[bold red]❌ ขั้นตอนล้มเหลว![/]")
                 console.print(f"   สาเหตุ: {e}")
-                console.print(f"   URL ปัจจุบัน: {self.driver.current_url}")
-                
-                # แนบลิงค์ภาพ Error
                 timestamp = datetime.datetime.now().strftime("%H%M%S")
                 err_img = f"error_step1_{timestamp}.png"
                 self.driver.save_screenshot(err_img)
@@ -534,6 +546,7 @@ class JobThaiRowScraper:
 
         console.print("🚫 หมดความพยายาม -> ใช้ Cookie สำรอง", style="bold red")
         return self.login_with_cookie()
+        
     def login_with_cookie(self):
         cookies_env = os.getenv("COOKIES_JSON")
         if not cookies_env: 
