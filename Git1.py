@@ -99,6 +99,13 @@ TARGET_FACULTIES = ["เครื่องสำอาง","Cosmetic Science","�
 TARGET_MAJORS = ["เครื่องสำอาง", "วิทยาศาสตร์เครื่องสำอาง","Cosmetic Science", "Cosmetics", "Cosmetic","ความงาม"]
 SEARCH_KEYWORDS = ["แม่ฟ้าหลวง เครื่องสำอาง"]
 
+# --- 🟢 เพิ่มชุดนี้ไว้ใต้ SEARCH_KEYWORDS ---
+# คีย์เวิร์ดที่อยู่ในกลุ่มเดียวกัน จะใช้ประวัติร่วมกัน (ป้องกันส่งเมลซ้ำ)
+MEMORY_GROUPS = {
+    "MFU_Cosmetic": ["แม่ฟ้าหลวง เครื่องสำอาง", "Mae Fah Luang Cosmetic", "เครื่องสำอาง แม่ฟ้าหลวง"],
+    "Sales_Beauty": ["Sales เครื่องสำอาง", "Cosmetic Science Sales", "พนักงานขายเครื่องสำอาง"],
+}
+
 
 KEYWORDS_CONFIG = {
     "NPD": {"titles": ["NPD", "R&D", "RD", "Research", "Development", "วิจัย", "พัฒนา", "Formulation", "สูตร"]},
@@ -169,6 +176,62 @@ class JobThaiRowScraper:
         self.total_profiles_viewed = 0 
         self.all_scraped_data = []
         self.ua = None 
+        # 🟢 เพิ่มส่วนนี้ท้าย __init__
+        self.sheet_client = None
+        self.sh = None  # ตัวแปรเก็บไฟล์ Spreadsheet หลัก
+        self.current_history_data = {} # เก็บประวัติของกลุ่ม Keyword ที่กำลังรัน
+        self.current_history_worksheet = None # เก็บหน้า Tab ประวัติปัจจุบัน
+
+        try:
+            if G_SHEET_KEY_JSON and G_SHEET_NAME:
+                creds_dict = json.loads(G_SHEET_KEY_JSON)
+                scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+                creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
+                self.sheet_client = gspread.authorize(creds)
+                self.sh = self.sheet_client.open(G_SHEET_NAME)
+                console.print(f"✅ เชื่อมต่อ Google Sheet หลักสำเร็จ", style="success")
+        except Exception as e:
+            console.print(f"❌ เชื่อมต่อ Google Sheet ไม่ได้: {e}", style="error")
+
+    def get_history_tab_name(self, keyword):
+        """ ค้นหากลุ่มของ Keyword เพื่อระบุชื่อ Tab ประวัติ """
+        for group_name, keywords in MEMORY_GROUPS.items():
+            if keyword in keywords:
+                return f"History_{group_name}"
+        # ถ้าไม่มีในกลุ่ม ให้ใช้ชื่อ keyword เอง (ลบอักขระพิเศษ)
+        clean_name = re.sub(r'[^\w\sก-๙]', '', keyword).strip()
+        return f"History_{clean_name[:20]}"
+
+    def prepare_history_for_keyword(self, keyword):
+        """ สลับหน้าประวัติและโหลดข้อมูลตามกลุ่ม Keyword """
+        tab_name = self.get_history_tab_name(keyword)
+        try:
+            try:
+                self.current_history_worksheet = self.sh.worksheet(tab_name)
+                console.print(f"📖 ใช้ระบบความจำกลุ่ม: [bold yellow]{tab_name}[/]", style="info")
+            except:
+                self.current_history_worksheet = self.sh.add_worksheet(title=tab_name, rows="1000", cols="3")
+                self.current_history_worksheet.append_row(["Candidate_ID", "Last_Sent_Date", "Source_Keyword"])
+                console.print(f"🆕 สร้างกลุ่มความจำใหม่: [bold green]{tab_name}[/]", style="success")
+
+            self.current_history_data = {}
+            rows = self.current_history_worksheet.get_all_values()
+            for row in rows[1:]:
+                if len(row) >= 2:
+                    self.current_history_data[str(row[0]).strip()] = str(row[1]).strip()
+            return True
+        except Exception as e:
+            console.print(f"⚠️ ระบบประวัติขัดข้อง: {e}", style="red")
+            return False
+
+    def update_history_sheet(self, person_id, date_str):
+        """ บันทึกประวัติคนที่มีการส่งเมลแล้วลง Google Sheet """
+        if self.current_history_worksheet:
+            try:
+                self.current_history_worksheet.append_row([str(person_id), str(date_str), "Auto-Log"])
+                self.current_history_data[str(person_id)] = str(date_str)
+            except Exception as e:
+                console.print(f"⚠️ บันทึกประวัติลง Sheet ไม่สำเร็จ: {e}", style="red")
 
     def save_history(self):
         if not EMAIL_USE_HISTORY: return
@@ -1154,38 +1217,45 @@ class JobThaiRowScraper:
         sender = os.getenv("EMAIL_SENDER")
         password = os.getenv("EMAIL_PASSWORD")
         receiver_list = []
-        if MANUAL_EMAIL_RECEIVERS and len(MANUAL_EMAIL_RECEIVERS) > 0: receiver_list = MANUAL_EMAIL_RECEIVERS
+        
+        # จัดการรายชื่อผู้รับ
+        if MANUAL_EMAIL_RECEIVERS and len(MANUAL_EMAIL_RECEIVERS) > 0: 
+            receiver_list = MANUAL_EMAIL_RECEIVERS
         else:
              rec_env = os.getenv("EMAIL_RECEIVER")
              if rec_env: receiver_list = [rec_env]
         
         if not sender or not password or not receiver_list: return
 
-        if "สรุป" in subject_prefix or "HOT" in subject_prefix: subject = subject_prefix
-        elif len(people_list) > 1: subject = f"🔥 {subject_prefix} ({len(people_list)} คน)"
-        else: subject = subject_prefix 
+        # ตั้งชื่อหัวข้ออีเมล
+        if "สรุป" in subject_prefix or "HOT" in subject_prefix: 
+            subject = subject_prefix
+        elif len(people_list) > 1: 
+            subject = f"🔥 {subject_prefix} ({len(people_list)} คน)"
+        else: 
+            subject = subject_prefix 
 
-        # --- 🟢 ส่วนที่แก้ไข 2: เตรียมข้อความ Footer (เช็คประวัติ) ---
+        # 🟢 จุดที่แก้ไข: เปลี่ยนมาเช็คประวัติจาก current_history_data (จาก Google Sheet)
         footer_note = ""
-        # เช็คเฉพาะกรณีส่งคนเดียว (HOT Case) เพื่อความแม่นยำ
         if len(people_list) == 1:
             person_id = str(people_list[0]['id'])
-            if person_id in self.history_data:
+            
+            # เช็คในความจำของ Keyword ปัจจุบัน
+            if person_id in self.current_history_data:
                 try:
                     # แปลงวันที่จาก YYYY-MM-DD เป็น D/M/Y
-                    raw_date = str(self.history_data[person_id])
+                    raw_date = str(self.current_history_data[person_id])
                     y, m, d = raw_date.split('-')
-                    formatted_date = f"{d}/{m}/{y}"
-                    footer_note = f"ℹ️ เคยพบคนนี้ล่าสุดเมื่อ: {formatted_date}"
+                    footer_note = f"ℹ️ เคยพบคนนี้ล่าสุดเมื่อ: {d}/{m}/{y}"
                 except:
-                    # กันเหนียวเผื่อ format ผิด
-                    footer_note = f"ℹ️ เคยพบคนนี้ล่าสุดเมื่อ: {self.history_data[person_id]}"
+                    footer_note = f"ℹ️ เคยพบคนนี้ล่าสุดเมื่อ: {self.current_history_data[person_id]}"
             else:
                 footer_note = "✨ ผู้สมัครรายใหม่ (ไม่เคยพบในระบบ)"
+        
         elif len(people_list) > 1:
             footer_note = "📦 อีเมลสรุปรายสัปดาห์ (แสดงสถานะประวัติเฉพาะอีเมลแจ้งเตือนรายบุคคล)"
 
-        # CSS: ปรับให้ตารางดูสะอาดตาและรองรับตัวหนา
+        # --- HTML & CSS Construction ---
         body_html = f"""
         <html>
         <head>
@@ -1199,8 +1269,15 @@ class JobThaiRowScraper:
                 text-align: center; text-decoration: none; display: inline-block;
                 border-radius: 4px; font-size: 12px; font-weight: bold;
             }}
-            .highlight {{ color: #d9534f; font-weight: bold; }}
-            .footer-text {{ margin-top: 15px; color: #555; font-size: 14px; font-weight: bold; border-top: 1px solid #eee; padding-top: 10px; }}
+            .highlight {{ color: #d9534f; font-weight: bold; }} /* สีแดงสำหรับบริษัทเป้าหมาย */
+            .footer-text {{ 
+                margin-top: 15px; 
+                color: #555; 
+                font-size: 14px; 
+                font-weight: bold; 
+                border-top: 1px solid #eee; 
+                padding-top: 10px; 
+            }}
         </style>
         </head>
         <body>
@@ -1224,6 +1301,7 @@ class JobThaiRowScraper:
         images_to_attach = []
         
         for person in people_list:
+            # จัดการรูปภาพ (CID Embed)
             cid_id = f"img_{person['id']}"
             if person['image_path'] and os.path.exists(person['image_path']):
                 img_html = f'<img src="cid:{cid_id}" width="70" style="border-radius: 5px;">'
@@ -1231,7 +1309,7 @@ class JobThaiRowScraper:
             else:
                 img_html = '<span style="color:gray; font-size:12px;">No Image</span>'
 
-            # Logic ไฮไลท์บริษัท
+            # จัดการ Highlight ชื่อบริษัท (Tier 1 / Client / Tier 2)
             raw_companies = person['company']
             final_company_html = "-"
             
@@ -1271,10 +1349,11 @@ class JobThaiRowScraper:
                 
                 final_company_html = "<br>".join(formatted_list)
 
-            # 🟢 ส่วนที่แก้ไข 1.2: ดึงค่าเงินเดือนแยก Min / Max
+            # 🟢 ส่วนที่แก้ไขใหม่: ดึงค่าเงินเดือนแยกตัวแปร
             s_min = person.get('salary_min', '-')
             s_max = person.get('salary_max', '-')
 
+            # สร้างแถวในตาราง
             body_html += f"""
                 <tr>
                     <td style="text-align: center;">{img_html}</td>
@@ -1293,9 +1372,10 @@ class JobThaiRowScraper:
                 </tr>
             """
             
-        # 🟢 ส่วนที่แก้ไข 2.2: ใส่ Footer Note ที่เตรียมไว้ลงไปท้ายตาราง
+        # 🟢 อย่าลืมแปะ footer_note ลงใน body_html
         body_html += f"</table><div class='footer-text'>{footer_note}</div></body></html>"
 
+        # ส่งอีเมล
         try:
             server = smtplib.SMTP('smtp.gmail.com', 587)
             server.starttls()
@@ -1309,6 +1389,7 @@ class JobThaiRowScraper:
             msg_root.attach(msg_alternative)
             msg_alternative.attach(MIMEText(body_html, 'html'))
             
+            # แนบรูปภาพ
             for img_data in images_to_attach:
                 try:
                     with open(img_data['path'], 'rb') as f:
@@ -1318,6 +1399,7 @@ class JobThaiRowScraper:
                         msg_root.attach(msg_img)
                 except: pass
 
+            # วนลูปส่งให้ผู้รับทุกคน
             for rec in receiver_list:
                 if 'To' in msg_root: del msg_root['To']
                 msg_root['To'] = rec
@@ -1432,11 +1514,12 @@ class JobThaiRowScraper:
         is_friday = (today.weekday() == 4)
         is_manual_run = (os.getenv("GITHUB_EVENT_NAME") == "workflow_dispatch")
         
-        console.print(f"📅 Status Check: Today is Monday? [{'Yes' if today.weekday()==0 else 'No'}] | Manual Run? [{'Yes' if is_manual_run else 'No'}]", style="bold yellow")
-        
-        master_data_list = [] 
+        console.print(f"📅 Status Check: Today is Friday? [{'Yes' if is_friday else 'No'}] | Manual Run? [{'Yes' if is_manual_run else 'No'}]", style="bold yellow")
         
         for index, keyword in enumerate(SEARCH_KEYWORDS):
+            # 🟢 [เพิ่ม] 1. เตรียมหน้าประวัติ (Tab) ตามกลุ่มของ Keyword ก่อนเริ่มค้นหา
+            self.prepare_history_for_keyword(keyword)
+
             console.rule(f"[bold magenta]🔍 เริ่มดำเนินการคำค้นที่ {index+1}/{len(SEARCH_KEYWORDS)}: {keyword}[/]")
             
             current_keyword_batch = []
@@ -1464,35 +1547,43 @@ class JobThaiRowScraper:
                                     d['Keyword'] = keyword
                                     self.all_scraped_data.append(d)
                                     
+                                    # 🟢 [แก้ไข] 2. เปลี่ยนมาใช้ self.current_history_data (จาก Google Sheet)
                                     should_add = False
                                     if days_diff <= 30:
                                         should_add = True
-                                        if EMAIL_USE_HISTORY and person_data['id'] in self.history_data:
+                                        if EMAIL_USE_HISTORY and person_data['id'] in self.current_history_data:
                                             try:
-                                                last_notify = datetime.datetime.strptime(self.history_data[person_data['id']], "%Y-%m-%d").date()
+                                                last_notify = datetime.datetime.strptime(self.current_history_data[person_data['id']], "%Y-%m-%d").date()
                                                 if (today - last_notify).days < 7: should_add = False
                                             except: pass
                                     if should_add: current_keyword_batch.append(person_data)
 
                                     if days_diff <= 1:
                                         should_hot = True
-                                        if EMAIL_USE_HISTORY and person_data['id'] in self.history_data:
+                                        # 🟢 [แก้ไข] 3. เช็คประวัติ HOT จาก Google Sheet
+                                        if EMAIL_USE_HISTORY and person_data['id'] in self.current_history_data:
                                              try:
-                                                  last_notify = datetime.datetime.strptime(self.history_data[person_data['id']], "%Y-%m-%d").date()
+                                                  last_notify = datetime.datetime.strptime(self.current_history_data[person_data['id']], "%Y-%m-%d").date()
                                                   if (today - last_notify).days < 1: should_hot = False
                                              except: pass
+                                        
                                         if should_hot:
                                             hot_subject = f"🔥 [HOT] พบผู้สมัครด่วน ({keyword}): {person_data['name']}"
                                             progress.console.print(f"   🚨 พบผู้สมัคร HOT -> ส่งเมลทันที!", style="bold red")
                                             self.send_single_email(hot_subject, [person_data], col_header="ประวัติบริษัท")
-                                            if EMAIL_USE_HISTORY: self.history_data[person_data['id']] = str(today)
+                                            
+                                            # 🟢 [เพิ่ม] 4. บันทึกประวัติลง Google Sheet ทันที (เคส HOT)
+                                            self.update_history_sheet(person_data['id'], str(today))
 
                                     if days_diff > 30 and (is_friday or is_manual_run):
                                          if current_keyword_batch:
                                               progress.console.print(f"\n[bold green]📨 เจอคนเก่า ({days_diff} วัน) -> ถึงรอบส่งเมลสรุป ({len(current_keyword_batch)} คน)![/]")
                                               self.send_batch_email(current_keyword_batch, keyword)
+                                              
+                                              # 🟢 [เพิ่ม] 5. บันทึกทุกคนใน Batch ลง Google Sheet
                                               if EMAIL_USE_HISTORY:
-                                                   for p in current_keyword_batch: self.history_data[p['id']] = str(today)
+                                                   for p in current_keyword_batch: 
+                                                       self.update_history_sheet(p['id'], str(today))
                                               current_keyword_batch = []
 
                             except Exception as e: progress.console.print(f"[bold red]❌ Error Link {i+1}: {e}[/]")
@@ -1500,15 +1591,17 @@ class JobThaiRowScraper:
                 
                 if current_keyword_batch and (is_friday or is_manual_run):
                     self.send_batch_email(current_keyword_batch, keyword)
+                    # 🟢 [เพิ่ม] 6. บันทึกทุกคนใน Batch สุดท้ายลง Google Sheet
                     if EMAIL_USE_HISTORY:
-                         for p in current_keyword_batch: self.history_data[p['id']] = str(today)
+                         for p in current_keyword_batch: 
+                             self.update_history_sheet(p['id'], str(today))
 
             console.print("⏳ พัก 3 วินาที ก่อนคำต่อไป...", style="dim")
             time.sleep(3)
         
         self.save_to_google_sheets()
-        self.save_history()
-        console.rule("[bold green]🏁 จบการทำงาน JobThai (Google Sheets Mode)[/]")
+        # 🟢 [ลบออก] 7. ไม่ต้องใช้ self.save_history() (แบบไฟล์) แล้ว เพราะเราอัปเดตลง Sheet ไปแล้วแบบ Real-time
+        console.rule("[bold green]🏁 จบการทำงาน JobThai (G-Sheet Memory Mode)[/]")
         try: self.driver.quit()
         except: pass
 
