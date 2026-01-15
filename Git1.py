@@ -402,7 +402,7 @@ class JobThaiRowScraper:
                 if not clicked_tab:
                     raise Exception("หาปุ่ม 'หาคน' ไม่เจอ หรือกดไม่ได้")
 
-               # ==============================================================================
+                # ==============================================================================
                 # 4️⃣ STEP 4: กรอก User/Pass และ "คลิกปุ่ม" (แก้จากการกด Enter)
                 # ==============================================================================
                 console.print("   4️⃣  กำลังกรอกข้อมูลและกดปุ่ม Login...", style="dim")
@@ -495,6 +495,18 @@ class JobThaiRowScraper:
                     
                     console.print(f"      ⚠️ หน้าเว็บแจ้งว่า: [bold red]'{error_msg}'[/]", style="white")
                     raise Exception(f"Login ไม่ผ่าน (ติดที่ {curr_url}) - Msg: {error_msg}")
+
+            except Exception as e:
+                # ❌ LOGGING เมื่อพัง
+                console.print(f"\n[bold red]❌ ขั้นตอนล้มเหลว![/]")
+                console.print(f"   สาเหตุ: {e}")
+                console.print(f"   URL ปัจจุบัน: {self.driver.current_url}")
+                
+                # แนบลิงค์ภาพ Error
+                timestamp = datetime.datetime.now().strftime("%H%M%S")
+                err_img = f"error_step1_{timestamp}.png"
+                self.driver.save_screenshot(err_img)
+                console.print(f"   📸 ดูภาพหลักฐานได้ที่: [yellow]{err_img}[/]\n")
 
         console.print("🚫 หมดความพยายาม -> ใช้ Cookie สำรอง", style="bold red")
         return self.login_with_cookie()
