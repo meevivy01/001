@@ -383,14 +383,10 @@ class JobThaiRowScraper:
                 # [Group A] Human Typing (รอบ 1-2)
                 if attempt <= 2:
                     # (Code เดิม: หาปุ่มกดเมนู -> พิมพ์ทีละตัว)
-                    # ... (ละไว้เพื่อความกระชับ ใช้ Logic เดิมได้เลย) ...
                     # ถ้าหาไม่เจอให้ข้ามไป Group B
                     if not self.driver.find_elements(By.CSS_SELECTOR, "input[type='password']"):
-                         # พยายามกดปุ่มเมนู (เหมือนเดิม)
+                         # พยายามกดปุ่มเมนู (ใส่ logic การกดเมนูของคุณตรงนี้ถ้าจำเป็น)
                          pass 
-
-                # [Group B] JS Injection (รอบ 3-5)
-                # ... (Logic เดิมจากรอบที่แล้ว) ...
 
                 # [Group C] 📱 Mobile Input (รอบ 6)
                 if attempt == 6:
@@ -484,11 +480,28 @@ class JobThaiRowScraper:
                         console.print(f"🎉 Login สำเร็จ! (ด้วยท่า {strategy_name})", style="bold green")
                         return True
                 
+                # ❌ LOGGING เมื่อ Login ไม่สำเร็จในรอบนั้น
                 console.print(f"   ❌ รอบที่ {attempt} ล้มเหลว", style="bold red")
-                self.driver.save_screenshot(f"fail_attempt_{attempt}.png")
+                console.print(f"      🔗 URL ค้างอยู่ที่: {self.driver.current_url}", style="dim")
+                console.print(f"      👀 Page Title: {self.driver.title}", style="dim")
+                
+                # Save Screenshot
+                timestamp = datetime.datetime.now().strftime("%H%M%S")
+                fail_img_name = f"login_fail_attempt_{attempt}_{timestamp}.png"
+                self.driver.save_screenshot(fail_img_name)
+                console.print(f"      📸 บันทึกภาพ: [bold yellow]{fail_img_name}[/]")
 
             except Exception as e:
-                console.print(f"   ⚠️ Error รอบที่ {attempt}: {e}", style="warning")
+                # 🚨 ERROR LOGGING SECTION (เมื่อโปรแกรม Crash)
+                console.print(f"\n[bold red]⚠️ CRITICAL ERROR รอบที่ {attempt}[/]")
+                console.print(f"   📖 รายละเอียด: {e}")
+                console.print(f"   🔗 URL ล่าสุด: {self.driver.current_url}")
+                console.print(f"   👀 Page Title: {self.driver.title}")
+                
+                timestamp = datetime.datetime.now().strftime("%H%M%S")
+                err_img_name = f"login_error_attempt_{attempt}_{timestamp}.png"
+                self.driver.save_screenshot(err_img_name)
+                console.print(f"   📸 บันทึกภาพ Error: [bold yellow]{err_img_name}[/]\n")
 
         console.print("🚫 หมดทุกกระบวนท่า 1-10 แล้ว -> ยอมแพ้", style="bold red")
         return self.login_with_cookie()
@@ -556,28 +569,24 @@ class JobThaiRowScraper:
         return False
 
     def step2_search(self, keyword):
-        # URL หน้าค้นหา Resume (ใช้ www3 ซึ่งเป็นระบบเก่าที่ใช้ง่ายกว่า)
+        # URL หน้าค้นหา Resume (ระบบเดิม www3)
         search_url = "https://www3.jobthai.com/findresume/findresume.php?l=th"
         console.rule(f"[bold cyan]2️⃣  ขั้นตอนค้นหา: '{keyword}'[/]")
         
         try:
-            # 1. บังคับเข้าหน้าค้นหา (Force Navigation)
-            # ไม่ว่าจะอยู่ที่ไหน ให้กระโดดมาหน้านี้ก่อนเสมอ
-            if search_url not in self.driver.current_url:
-                console.print("   🔗 กำลังเข้าสู่หน้าค้นหา...", style="dim")
+            # 1. เช็คว่าอยู่หน้าค้นหาหรือยัง? ถ้ายัง ให้ Force Navigate
+            current_url = self.driver.current_url
+            if "findresume.php" not in current_url:
+                console.print(f"   🔗 ไม่อยู่หน้าค้นหา (อยู่ที่: {current_url}) -> กำลัง Force Redirect...", style="yellow")
                 self.driver.get(search_url)
                 self.wait_for_page_load()
                 self.random_sleep(3, 5)
 
-            # 2. เช็คว่าเข้าได้จริงไหม (ถ้ายังติดหน้า Login แสดงว่า Cookie ไม่ข้าม Subdomain)
+            # 2. เช็คว่าโดนดีดกลับหน้า Login หรือไม่?
             if "login" in self.driver.current_url:
-                console.print("   ⚠️ เด้งกลับมาหน้า Login! (Cookie อาจไม่ครอบคลุม www3)", style="red")
-                # ลองกด Refresh สักรอบเผื่อ Cookie พึ่งมา
-                self.driver.refresh()
-                self.wait_for_page_load()
-                time.sleep(3)
+                raise Exception("Cookie หลุด/ไม่ครอบคลุม -> ระบบดีดกลับมาหน้า Login")
 
-            # 3. ฆ่า Popup ที่อาจจะตามมารังควาน
+            # 3. เคลียร์ Popup
             try:
                 self.driver.execute_script("document.querySelectorAll('#close-button,.cookie-consent,[class*=\"pdpa\"],.modal-backdrop,iframe').forEach(b=>b.remove());")
             except: pass
@@ -590,19 +599,18 @@ class JobThaiRowScraper:
                     time.sleep(2)
             except: pass
 
-            # 5. หาช่องพิมพ์ (KeyWord) แบบรอจนกว่าจะเจอ
+            # 5. หาช่องพิมพ์ (รอสูงสุด 20 วินาที)
             console.print("   ✍️ กำลังหาช่องพิมพ์...", style="dim")
             kw_element = WebDriverWait(self.driver, 20).until(
                 EC.visibility_of_element_located((By.ID, "KeyWord"))
             )
             
-            # 6. พิมพ์คำค้นหา (เคลียร์ก่อนพิมพ์)
+            # 6. พิมพ์คำค้นหา
             kw_element.click()
             kw_element.clear()
-            # ใช้ JS พิมพ์เพื่อความชัวร์ (แก้ปัญหาพิมพ์ไม่ติด)
+            # ใช้ JS พิมพ์เพื่อความชัวร์
             self.driver.execute_script("arguments[0].value = arguments[1];", kw_element, keyword)
             time.sleep(0.5)
-            # Trigger Event ให้เว็รู้ว่าพิมพ์แล้ว
             self.driver.execute_script("arguments[0].dispatchEvent(new Event('input'));", kw_element)
             
             console.print(f"   ✅ พิมพ์ '{keyword}' เรียบร้อย", style="info")
@@ -611,30 +619,40 @@ class JobThaiRowScraper:
             # 7. กดปุ่มค้นหา
             search_btn = self.driver.find_element(By.ID, "buttonsearch")
             self.driver.execute_script("arguments[0].click();", search_btn)
+            console.print("   🔍 กดปุ่มค้นหาแล้ว รอผลลัพธ์...", style="dim")
             
-            console.print("   🔍 กำลังค้นหา... รอผลลัพธ์", style="dim")
-            
-            # 8. รอผลลัพธ์ (Check Success)
-            # รอจนกว่า URL จะเปลี่ยน หรือมีคำว่า ResumeDetail ใน Source
-            try:
-                WebDriverWait(self.driver, 20).until(
-                    lambda d: "ResumeDetail" in d.page_source or "ไม่พบข้อมูล" in d.page_source or "No data found" in d.page_source
-                )
-            except TimeoutException:
-                console.print("   ⚠️ Timeout: หน้าเว็บโหลดนานเกินไป", style="yellow")
+            # 8. รอผลลัพธ์
+            WebDriverWait(self.driver, 20).until(
+                lambda d: "ResumeDetail" in d.page_source or "ไม่พบข้อมูล" in d.page_source or "No data found" in d.page_source
+            )
 
-            # 9. เช็คว่าเจอข้อมูลไหม
+            # 9. เช็คผลลัพธ์
             if "ไม่พบข้อมูล" in self.driver.page_source or "No data found" in self.driver.page_source:
                 console.print(f"   ⚠️ ไม่พบข้อมูล (0 Results) สำหรับ: {keyword}", style="warning")
-                return True # ถือว่าทำงานเสร็จแล้ว (แค่ไม่มีของ)
+                return True
 
             console.print(f"   ✅ เจอผลการค้นหา!", style="success")
             return True
 
         except Exception as e:
-            console.print(f"   ❌ Search Error ({keyword}): {e}", style="error")
-            # Save รูปดูหน่อยว่าตายตรงไหน
-            self.driver.save_screenshot(f"search_error_{keyword}.png")
+            # =======================================================
+            # 🚨 ERROR LOGGING SECTION (ส่วนที่เพิ่มใหม่)
+            # =======================================================
+            timestamp = datetime.datetime.now().strftime("%H%M%S")
+            err_img_name = f"error_search_{keyword}_{timestamp}.png"
+            
+            curr_url = self.driver.current_url
+            curr_title = self.driver.title
+            
+            console.print(f"\n[bold red]❌ Search Error ({keyword})[/]")
+            console.print(f"   📖 คำอธิบาย Error: {e}")
+            console.print(f"   🔗 ลิงก์หน้าเว็บปัจจุบัน: {curr_url}")
+            console.print(f"   👀 ชื่อหน้าเว็บ (Title): {curr_title}")
+            
+            # Save Screenshot
+            self.driver.save_screenshot(err_img_name)
+            console.print(f"   📸 บันทึกหลักฐานภาพถ่ายไว้ที่: [bold yellow]{err_img_name}[/]\n")
+            
             return False
 
     def step3_collect_all_links(self):
