@@ -374,7 +374,7 @@ class JobThaiRowScraper:
                             self.driver.execute_script("arguments[0].click();", elem)
                             clicked_tab = True
                             console.print(f"      ✅ กดปุ่ม 'หาคน' สำเร็จ (ด้วย Selector: {val})", style="bold green")
-                            time.sleep(2)
+                            time.sleep(3)
                             break
                     except: continue
                 
@@ -389,7 +389,7 @@ class JobThaiRowScraper:
 
                 # รอให้ Input มา
                 try:
-                    WebDriverWait(self.driver, 10).until(EC.presence_of_element_located((By.ID, "login-form-username")))
+                    WebDriverWait(self.driver, 20).until(EC.presence_of_element_located((By.ID, "login-form-username")))
                 except:
                     console.print("      ⚠️ หาช่อง username ไม่เจอ (จะพยายามต่อ)", style="yellow")
 
