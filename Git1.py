@@ -410,38 +410,75 @@ class JobThaiRowScraper:
                         raise Exception(f"หาลิงก์ {target_login_link} ไม่เจอทั้ง Tab และ JS")
 
                 # ==============================================================================
-                # 3️⃣ STEP 3: กดเลือก "หาคน" (Employer Tab)
+                # 3️⃣ STEP 3: กดเลือก "หาคน" (Employer Tab) - [UPGRADED: REAL ELEMENT ONLY]
                 # ==============================================================================
-                console.print("   3️⃣  กำลังหาปุ่ม 'หาคน' (Employer Tab)...", style="dim")
+                console.print("   3️⃣  กำลังเฟ้นหาปุ่ม 'หาคน' ตัวจริง (Stealth Validation)...", style="dim")
                 kill_blockers()
-                
-                try:
-                    WebDriverWait(self.driver, 10).until(
-                        EC.visibility_of_element_located((By.XPATH, "//*[@id='login_tab_employer']"))
-                    )
-                except: 
-                    console.print("      ⚠️ ไม่เห็นปุ่ม ID login_tab_employer (อาจโดนบัง หรือ Modal ไม่มา)", style="red")
 
-                clicked_tab = False
                 employer_selectors = [
-                    (By.XPATH, "//*[@id='login_tab_employer']"),
+                    (By.ID, "login_tab_employer"),
+                    (By.XPATH, "//div[@id='login_tab_employer']"),
                     (By.XPATH, "//span[contains(text(), 'หาคน')]"),
-                    (By.CSS_SELECTOR, "div#login_tab_employer")
+                    (By.CSS_SELECTOR, "#login_tab_employer")
                 ]
 
+                clicked_tab = False
+                
+                # --- LOOP ค้นหาจากหลาย Selector ---
                 for by, val in employer_selectors:
                     try:
-                        elem = self.driver.find_element(by, val)
-                        if elem.is_displayed():
-                            self.driver.execute_script("arguments[0].click();", elem)
-                            clicked_tab = True
-                            console.print(f"      ✅ กดปุ่ม 'หาคน' สำเร็จ (ด้วย Selector: {val})", style="bold green")
-                            time.sleep(3)
-                            break
+                        # 1. หา Element ทั้งหมดที่ตรงกับ Selector (อาจเจอทั้งตัวจริง/ตัวปลอม)
+                        candidates = self.driver.find_elements(by, val)
+                        
+                        for candidate in candidates:
+                            # 🔍 [FILTER] แยกตัวจริงตัวปลอม
+                            # - ต้องแสดงผล (Displayed)
+                            # - ต้องมีขนาดกว้างยาว (Size > 0)
+                            # - ต้องไม่อยู่ในจุดที่โดน Element อื่นบัง (Pointer Check)
+                            
+                            is_visible = candidate.is_displayed()
+                            has_size = candidate.size['width'] > 0 and candidate.size['height'] > 0
+                            
+                            if is_visible and has_size:
+                                # ใช้ JS เช็คว่าจุดกึ่งกลางของ Element นี้ 'จิ้มติด' ไหม (ไม่โดน Layer อื่นบัง)
+                                is_top_element = self.driver.execute_script("""
+                                    var elem = arguments[0];
+                                    var rect = elem.getBoundingClientRect();
+                                    var cx = rect.left + rect.width / 2;
+                                    var cy = rect.top + rect.height / 2;
+                                    var topElem = document.elementFromPoint(cx, cy);
+                                    return elem.contains(topElem) || topElem.contains(elem);
+                                """, candidate)
+
+                                if is_top_element:
+                                    console.print(f"      🎯 เจอตัวจริงแล้ว! (Selector: {val})", style="success")
+                                    
+                                    # ลองกด 3 วิธีซ้อน (ActionChains > Click > JS Click) เพื่อความชัวร์
+                                    try:
+                                        ActionChains(self.driver).move_to_element(candidate).click().perform()
+                                    except:
+                                        try: candidate.click()
+                                        except: self.driver.execute_script("arguments[0].click();", candidate)
+                                    
+                                    # 🧐 [VERIFY] ตรวจสอบว่าหน้าเปลี่ยนจริงไหม (ช่อง Username ต้องโผล่มา)
+                                    time.sleep(1.5) # รอแอนิเมชันเว็บสลับ Tab
+                                    if len(self.driver.find_elements(By.ID, "login-form-username")) > 0:
+                                        clicked_tab = True
+                                        console.print("      ✅ สลับ Tab สำเร็จ (Login Form ปรากฏ)", style="success")
+                                        break
+                                    else:
+                                        console.print("      ⚠️ กดแล้วหน้าไม่เปลี่ยน (อาจเป็นตัวหลอก) -> ลองหาใหม่", style="yellow")
+                        
+                        if clicked_tab: break
                     except: continue
                 
                 if not clicked_tab:
-                    raise Exception("หาปุ่ม 'หาคน' ไม่เจอ หรือกดไม่ได้")
+                    # ท่าไม้ตายสุดท้าย: ถ้ากดไม่ได้จริงๆ แต่เรารู้ว่า ID นี้คือของจริง ให้ใช้ JS บังคับกดตรงๆ
+                    console.print("      🚨 พยายามกดแบบปกติไม่ได้ผล ใช้ JS Force Click...", style="warning")
+                    self.driver.execute_script("document.getElementById('login_tab_employer').click();")
+                    time.sleep(2)
+                    if len(self.driver.find_elements(By.ID, "login-form-username")) == 0:
+                        raise Exception("หาปุ่ม 'หาคน' ที่ใช้งานได้ไม่เจอ หรือหน้า Login ไม่ยอมโหลด")
 
                 # ==============================================================================
                 # 4️⃣ STEP 4: กรอกข้อมูล & กดปุ่ม (Ultimate Stealth & Robust Mode)
