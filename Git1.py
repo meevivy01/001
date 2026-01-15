@@ -1123,7 +1123,7 @@ class JobThaiRowScraper:
         if not self.step1_login(): return
         
         today = datetime.date.today()
-        is_monday = (today.weekday() == 0)
+        is_friday = (today.weekday() == 4)
         is_manual_run = (os.getenv("GITHUB_EVENT_NAME") == "workflow_dispatch")
         
         console.print(f"📅 Status Check: Today is Monday? [{'Yes' if is_monday else 'No'}] | Manual Run? [{'Yes' if is_manual_run else 'No'}]", style="bold yellow")
@@ -1181,7 +1181,7 @@ class JobThaiRowScraper:
                                             self.send_single_email(hot_subject, [person_data], col_header="ประวัติบริษัท")
                                             if EMAIL_USE_HISTORY: self.history_data[person_data['id']] = str(today)
 
-                                    if days_diff > 30 and (is_monday or is_manual_run):
+                                    if days_diff > 30 and (is_friday or is_manual_run):
                                         if current_keyword_batch:
                                              progress.console.print(f"\n[bold green]📨 เจอคนเก่า ({days_diff} วัน) -> ถึงรอบส่งเมลสรุป ({len(current_keyword_batch)} คน)![/]")
                                              self.send_batch_email(current_keyword_batch, keyword)
@@ -1192,7 +1192,7 @@ class JobThaiRowScraper:
                             except Exception as e: progress.console.print(f"[bold red]❌ Error Link {i+1}: {e}[/]")
                             progress.advance(task_id)
                 
-                if current_keyword_batch and (is_monday or is_manual_run):
+                if current_keyword_batch and (is_friday or is_manual_run):
                     self.send_batch_email(current_keyword_batch, keyword)
                     if EMAIL_USE_HISTORY:
                          for p in current_keyword_batch: self.history_data[p['id']] = str(today)
