@@ -468,22 +468,32 @@ class JobThaiRowScraper:
                     raise Exception("หาช่อง Input ไม่เจอ")
 
                 # ==============================================================================
-                # 5️⃣ STEP 5: ตรวจสอบผลลัพธ์
+                # 5️⃣ STEP 5: ตรวจสอบผลลัพธ์ (แก้ Bug False Positive)
                 # ==============================================================================
                 console.print("   5️⃣  ตรวจสอบผลลัพธ์...", style="dim")
                 
+                # เพิ่มเวลารอให้ Redirect เสร็จสมบูรณ์
                 try:
                     WebDriverWait(self.driver, 15).until(
                         lambda d: "auth.jobthai.com" not in d.current_url and "login" not in d.current_url
                     )
                 except: pass
 
-                curr_url = self.driver.current_url
-                if "dashboard" in curr_url or "resume" in curr_url or "jobpost" in curr_url:
+                curr_url = self.driver.current_url.lower()
+                
+                # ✅ เงื่อนไขความสำเร็จที่ถูกต้อง (แก้ใหม่)
+                # 1. ต้องเข้า Dashboard ได้
+                # 2. หรือเข้าหน้า Resume Search (findresume) ได้
+                # 3. ต้องไม่อยู่ที่หน้า auth หรือ login
+                is_auth_page = "auth.jobthai.com" in curr_url or "login" in curr_url
+                is_success_page = "employer/dashboard" in curr_url or "findresume" in curr_url or ("resume" in curr_url and not is_auth_page)
+
+                if is_success_page and not is_auth_page:
                     console.print(f"🎉 Login สำเร็จ! (URL: {curr_url})", style="bold green")
                     return True
                 else:
-                    error_msg = "หาสาเหตุไม่พบ"
+                    # อ่าน Error บนหน้าจอ
+                    error_msg = "หาสาเหตุไม่พบ (อาจเป็นเพราะกดปุ่มไม่ติด หรือหน้าเว็บโหลดไม่เสร็จ)"
                     try:
                         error_elem = self.driver.execute_script("""
                             return document.querySelector('.text-danger, .error-message, .alert-danger, .ant-form-item-explain-error')?.innerText;
@@ -491,17 +501,9 @@ class JobThaiRowScraper:
                         if error_elem: error_msg = error_elem.strip()
                     except: pass
                     
-                    console.print(f"      ⚠️ Login ไม่ผ่าน (URL: {curr_url})", style="bold red")
+                    console.print(f"      ⚠️ ยังติดอยู่หน้า Login (URL: {curr_url})", style="bold red")
                     console.print(f"      💬 Alert: [white on red]{error_msg}[/]")
-                    raise Exception(f"Login Failed - Msg: {error_msg}")
-
-            except Exception as e:
-                console.print(f"\n[bold red]❌ ขั้นตอนล้มเหลว![/]")
-                console.print(f"   สาเหตุ: {e}")
-                timestamp = datetime.datetime.now().strftime("%H%M%S")
-                err_img = f"error_step1_{timestamp}.png"
-                self.driver.save_screenshot(err_img)
-                console.print(f"   📸 ดูภาพหลักฐาน: [yellow]{err_img}[/]\n")
+                    raise Exception(f"Login Failed - Stuck at {curr_url}")
 
         console.print("🚫 หมดความพยายาม -> ใช้ Cookie สำรอง", style="bold red")
         return self.login_with_cookie()
