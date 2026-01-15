@@ -1165,6 +1165,26 @@ class JobThaiRowScraper:
         elif len(people_list) > 1: subject = f"🔥 {subject_prefix} ({len(people_list)} คน)"
         else: subject = subject_prefix 
 
+        # --- 🟢 ส่วนที่แก้ไข 2: เตรียมข้อความ Footer (เช็คประวัติ) ---
+        footer_note = ""
+        # เช็คเฉพาะกรณีส่งคนเดียว (HOT Case) เพื่อความแม่นยำ
+        if len(people_list) == 1:
+            person_id = str(people_list[0]['id'])
+            if person_id in self.history_data:
+                try:
+                    # แปลงวันที่จาก YYYY-MM-DD เป็น D/M/Y
+                    raw_date = str(self.history_data[person_id])
+                    y, m, d = raw_date.split('-')
+                    formatted_date = f"{d}/{m}/{y}"
+                    footer_note = f"ℹ️ เคยพบคนนี้ล่าสุดเมื่อ: {formatted_date}"
+                except:
+                    # กันเหนียวเผื่อ format ผิด
+                    footer_note = f"ℹ️ เคยพบคนนี้ล่าสุดเมื่อ: {self.history_data[person_id]}"
+            else:
+                footer_note = "✨ ผู้สมัครรายใหม่ (ไม่เคยพบในระบบ)"
+        elif len(people_list) > 1:
+            footer_note = "📦 อีเมลสรุปรายสัปดาห์ (แสดงสถานะประวัติเฉพาะอีเมลแจ้งเตือนรายบุคคล)"
+
         # CSS: ปรับให้ตารางดูสะอาดตาและรองรับตัวหนา
         body_html = f"""
         <html>
@@ -1179,7 +1199,8 @@ class JobThaiRowScraper:
                 text-align: center; text-decoration: none; display: inline-block;
                 border-radius: 4px; font-size: 12px; font-weight: bold;
             }}
-            .highlight {{ color: #d9534f; font-weight: bold; }} /* สีแดงเลือดหมูตัวหนา สำหรับเป้าหมาย */
+            .highlight {{ color: #d9534f; font-weight: bold; }}
+            .footer-text {{ margin-top: 15px; color: #555; font-size: 14px; font-weight: bold; border-top: 1px solid #eee; padding-top: 10px; }}
         </style>
         </head>
         <body>
@@ -1187,12 +1208,14 @@ class JobThaiRowScraper:
             <table>
                 <tr>
                     <th style="width: 8%;">รูปภาพ</th>
-                    <th style="width: 22%;">{col_header}</th> <th style="width: 10%;">ระดับการศึกษา</th>
+                    <th style="width: 22%;">{col_header}</th> 
+                    <th style="width: 10%;">ระดับการศึกษา</th>
                     <th style="width: 10%;">รหัสใบสมัคร</th>
                     <th style="width: 15%;">ชื่อ-นามสกุล</th>
                     <th style="width: 5%;">อายุ</th>
                     <th style="width: 15%;">ตำแหน่งที่สมัคร</th>
-                    <th style="width: 8%;">เงินเดือน (Min-Max)</th> 
+                    <th style="width: 8%;">เงินเดือนต่ำสุด</th>
+                    <th style="width: 8%;">เงินเดือนสูงสุด</th> 
                     <th style="width: 10%;">อัพเดทล่าสุด</th>
                     <th style="width: 7%;">ลิงก์</th>
                 </tr>
@@ -1208,7 +1231,7 @@ class JobThaiRowScraper:
             else:
                 img_html = '<span style="color:gray; font-size:12px;">No Image</span>'
 
-            # --- 🔥 ส่วน Logic การทำตัวหนาเฉพาะบริษัทเป้าหมาย ---
+            # Logic ไฮไลท์บริษัท
             raw_companies = person['company']
             final_company_html = "-"
             
@@ -1227,7 +1250,7 @@ class JobThaiRowScraper:
                                 is_target = True; break
                         if is_target: break
                     
-                    # 2. เช็ค Clients (ถ้ายังไม่ใช่ Tier 1)
+                    # 2. เช็ค Clients
                     if not is_target:
                         for key, keywords in CLIENTS_TARGETS.items():
                             for kw in keywords:
@@ -1241,17 +1264,16 @@ class JobThaiRowScraper:
                             if fuzz.token_set_ratio(kw.lower(), comp_clean.lower()) >= 85:
                                 is_target = True; break
 
-                    # ถ้าใช่เป้าหมาย ให้ใส่ tag <b> และสี
                     if is_target:
                         formatted_list.append(f"<span class='highlight'>{comp_clean}</span>")
                     else:
                         formatted_list.append(comp_clean)
                 
-                # แสดงผลแบบรายการ (List) คั่นด้วย <br>
                 final_company_html = "<br>".join(formatted_list)
 
-            # จัดการเงินเดือน (รวม Min-Max ในช่องเดียว)
-            salary_show = f"{person.get('salary_min', '-')} - {person.get('salary_max', '-')}"
+            # 🟢 ส่วนที่แก้ไข 1.2: ดึงค่าเงินเดือนแยก Min / Max
+            s_min = person.get('salary_min', '-')
+            s_max = person.get('salary_max', '-')
 
             body_html += f"""
                 <tr>
@@ -1262,7 +1284,8 @@ class JobThaiRowScraper:
                     <td>{person['name']}</td>
                     <td>{person['age']}</td>
                     <td>{person['positions']}</td>
-                    <td>{salary_show}</td> 
+                    <td>{s_min}</td> 
+                    <td>{s_max}</td>
                     <td>{person['last_update']}</td>
                     <td style="text-align: center;">
                         <a href="{person['link']}" target="_blank" class="btn">เปิดดู</a>
@@ -1270,7 +1293,8 @@ class JobThaiRowScraper:
                 </tr>
             """
             
-        body_html += "</table><br><p style='color:#777; font-size:12px;'><i>* รายชื่อสีแดงเข้ม คือบริษัทที่อยู่ใน Target List</i></p></body></html>"
+        # 🟢 ส่วนที่แก้ไข 2.2: ใส่ Footer Note ที่เตรียมไว้ลงไปท้ายตาราง
+        body_html += f"</table><div class='footer-text'>{footer_note}</div></body></html>"
 
         try:
             server = smtplib.SMTP('smtp.gmail.com', 587)
