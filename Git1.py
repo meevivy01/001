@@ -1065,6 +1065,7 @@ class JobThaiRowScraper:
         elif len(people_list) > 1: subject = f"🔥 {subject_prefix} ({len(people_list)} คน)"
         else: subject = subject_prefix 
 
+        # 🟢 1. [แก้ไข] ลบ <th>วันที่เคยเจอ</th> ออกแล้ว
         body_html = f"""
         <html>
         <head>
@@ -1104,7 +1105,14 @@ class JobThaiRowScraper:
         """
         
         images_to_attach = []
+        # เตรียมตัวแปรสำหรับ Footer (ดึงจากคนแรกในลิสต์)
+        footer_last_seen = "-"
+        
         for person in people_list:
+            # เก็บค่า last_seen_date ไว้ใช้ที่ Footer (ถ้ามีหลายคนจะเอาของคนล่าสุดที่วนลูป แต่ปกติอีเมล HOT มีคนเดียว)
+            if person.get('last_seen_date') and person.get('last_seen_date') != "-":
+                footer_last_seen = person.get('last_seen_date')
+
             cid_id = f"img_{person['id']}"
             if person['image_path'] and os.path.exists(person['image_path']):
                 img_html = f'<img src="cid:{cid_id}" width="80" style="border-radius: 5px;">'
@@ -1119,6 +1127,7 @@ class JobThaiRowScraper:
             else:
                 company_style = "font-weight: normal;"
 
+            # 🟢 2. [แก้ไข] ลบ <td>{prev_date}</td> ออกจากบรรทัดนี้
             body_html += f"""
                 <tr>
                     <td style="text-align: center;">{img_html}</td>
@@ -1134,8 +1143,14 @@ class JobThaiRowScraper:
                     </td>
                 </tr>
             """
-            
-        body_html += "</table><br><p><i>ระบบอัตโนมัติ JobThai Scraper (Google Sheets Edition)</i></p></body></html>"
+        
+        # จัดรูปแบบข้อความ Footer
+        footer_text = f"ประวัติการเจอ: {footer_last_seen}"
+        if footer_last_seen == "-":
+            footer_text = "ประวัติการเจอ: ไม่เคยเจอมาก่อน (New)"
+
+        # 🟢 3. [แก้ไข] เปลี่ยนข้อความท้ายอีเมล เป็นตัวแปร footer_text
+        body_html += f"</table><br><p style='color: #666; font-size: 12px;'><i>{footer_text}</i></p></body></html>"
 
         try:
             server = smtplib.SMTP('smtp.gmail.com', 587)
