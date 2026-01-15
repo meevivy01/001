@@ -290,7 +290,7 @@ class JobThaiRowScraper:
         max_retries = 3
 
         for attempt in range(1, max_retries + 1):
-            console.rule(f"[bold cyan]🔐 Login Attempt {attempt}/{max_retries} (Specific ID Target)[/]")
+            console.rule(f"[bold cyan]🔐 Login Attempt {attempt}/{max_retries} (Target ID: login_company)[/]")
             
             try:
                 # ==============================================================================
@@ -334,7 +334,7 @@ class JobThaiRowScraper:
                         console.print(f"      ✅ เจอปุ่มเป้าหมายแล้ว! (กด Tab ครั้งที่ {i+1})", style="bold green")
                         actions.send_keys(Keys.ENTER).perform()
                         link_found = True
-                        time.sleep(3) # รอ Modal
+                        time.sleep(3)
                         break
                     time.sleep(0.05)
 
@@ -359,7 +359,6 @@ class JobThaiRowScraper:
                 console.print("   3️⃣  กำลังหาปุ่ม 'หาคน' (Employer Tab)...", style="dim")
                 kill_blockers()
                 
-                # รอให้ Modal เด้ง
                 try:
                     WebDriverWait(self.driver, 10).until(
                         EC.visibility_of_element_located((By.XPATH, "//*[@id='login_tab_employer']"))
@@ -389,31 +388,24 @@ class JobThaiRowScraper:
                     raise Exception("หาปุ่ม 'หาคน' ไม่เจอ หรือกดไม่ได้")
 
                 # ==============================================================================
-                # 4️⃣ STEP 4: กรอก User/Pass (ใช้ ID ที่คุณให้มา) และกดปุ่ม
+                # 4️⃣ STEP 4: กรอกข้อมูล & กดปุ่ม (Target ID: login_company)
                 # ==============================================================================
-                console.print("   4️⃣  กำลังกรอกข้อมูล (Target ID) และกดปุ่ม...", style="dim")
+                console.print("   4️⃣  กำลังกรอกข้อมูลและกดปุ่ม Submit (Target: login_company)...", style="dim")
                 kill_blockers()
 
-                # 🔥 JS Code ใหม่: เจาะจง ID login-form-username / password
                 js_fill_and_click = """
                     var user = document.getElementById('login-form-username');
                     var pass = document.getElementById('login-form-password');
                     var filled = false;
 
-                    // ฟังก์ชันช่วยยัดค่าและกระตุ้น React Event
+                    // --- Part A: กรอกข้อมูล ---
                     function setNativeValue(element, value) {
                         if (!element) return false;
-                        
-                        // 1. ใส่ค่า
                         var lastValue = element.value;
                         element.value = value;
-                        
-                        // 2. Hack React Tracker (สำคัญมากสำหรับ Ant Design)
                         var event = new Event('input', { bubbles: true });
                         var tracker = element._valueTracker;
                         if (tracker) { tracker.setValue(lastValue); }
-                        
-                        // 3. Dispatch Events
                         element.dispatchEvent(event);
                         element.dispatchEvent(new Event('change', { bubbles: true }));
                         element.dispatchEvent(new Event('blur', { bubbles: true }));
@@ -425,47 +417,61 @@ class JobThaiRowScraper:
                         setNativeValue(pass, arguments[1]);
                         filled = true;
                     } else {
-                        // Fallback: ถ้าหา ID ไม่เจอ ให้ลองหา input ตาม type
+                        // Fallback หา input ทั่วไป
                         var inputs = document.getElementsByTagName('input');
                         for(var i=0; i<inputs.length; i++) {
                              if(inputs[i].type == 'text' || inputs[i].type == 'email') setNativeValue(inputs[i], arguments[0]);
                              if(inputs[i].type == 'password') setNativeValue(inputs[i], arguments[1]);
                         }
-                        filled = true; // สมมติว่าเจอ
+                        filled = true;
                     }
 
-                    // กดปุ่ม Login
+                    // --- Part B: กดปุ่ม (Target ID: login_company) ---
                     var clicked = false;
-                    var btns = document.querySelectorAll('button');
-                    for (var i=0; i<btns.length; i++) {
-                        var txt = (btns[i].innerText || '').toLowerCase();
-                        if (btns[i].type === 'submit' || txt.includes('เข้าสู่ระบบ') || txt.includes('login')) {
-                            btns[i].click();
-                            clicked = true;
-                            break;
+                    var method = "none";
+                    
+                    // 1. ลองกดปุ่ม ID login_company ก่อน (Priority สูงสุด)
+                    var targetBtn = document.getElementById('login_company');
+                    if (targetBtn) {
+                        targetBtn.click();
+                        clicked = true;
+                        method = "id_match";
+                    } 
+                    // 2. ถ้าไม่เจอ ให้วนหาปุ่มทั่วไป (Fallback)
+                    else {
+                        var btns = document.querySelectorAll('button');
+                        for (var i=0; i<btns.length; i++) {
+                            var txt = (btns[i].innerText || '').toLowerCase();
+                            if (btns[i].type === 'submit' || txt.includes('เข้าสู่ระบบ') || txt.includes('login')) {
+                                btns[i].click();
+                                clicked = true;
+                                method = "generic_match";
+                                break;
+                            }
                         }
                     }
 
-                    return { filled: filled, clicked: clicked };
+                    return { filled: filled, clicked: clicked, method: method };
                 """
                 
                 result = self.driver.execute_script(js_fill_and_click, MY_USERNAME, MY_PASSWORD)
                 
                 if result and result.get('filled'):
                     if result.get('clicked'):
-                        console.print("      ✅ เจอช่อง (ID: login-form-...) กรอกและกดปุ่ม Submit แล้ว!", style="green")
+                        method_used = result.get('method')
+                        msg_style = "green" if method_used == "id_match" else "yellow"
+                        console.print(f"      ✅ กรอกรหัสและกดปุ่มสำเร็จ! (Method: {method_used})", style=msg_style)
                     else:
                         console.print("      ⚠️ กรอกเสร็จแต่หาปุ่มกดไม่เจอ -> ลองกด Enter", style="yellow")
                         ActionChains(self.driver).send_keys(Keys.ENTER).perform()
                 else:
-                    raise Exception("หาช่อง Input (ID: login-form-...) ไม่เจอ")
+                    raise Exception("หาช่อง Input ไม่เจอ")
 
                 # ==============================================================================
                 # 5️⃣ STEP 5: ตรวจสอบผลลัพธ์
                 # ==============================================================================
                 console.print("   5️⃣  ตรวจสอบผลลัพธ์...", style="dim")
                 
-                # เพิ่มเวลารอเป็น 15 วินาที
                 try:
                     WebDriverWait(self.driver, 15).until(
                         lambda d: "auth.jobthai.com" not in d.current_url and "login" not in d.current_url
@@ -477,7 +483,6 @@ class JobThaiRowScraper:
                     console.print(f"🎉 Login สำเร็จ! (URL: {curr_url})", style="bold green")
                     return True
                 else:
-                    # อ่าน Error บนหน้าจอ
                     error_msg = "หาสาเหตุไม่พบ"
                     try:
                         error_elem = self.driver.execute_script("""
@@ -487,7 +492,7 @@ class JobThaiRowScraper:
                     except: pass
                     
                     console.print(f"      ⚠️ Login ไม่ผ่าน (URL: {curr_url})", style="bold red")
-                    console.print(f"      💬 ข้อความแจ้งเตือน: [white on red]{error_msg}[/]")
+                    console.print(f"      💬 Alert: [white on red]{error_msg}[/]")
                     raise Exception(f"Login Failed - Msg: {error_msg}")
 
             except Exception as e:
