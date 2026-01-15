@@ -435,7 +435,7 @@ class JobThaiRowScraper:
                     actions = ActionChains(self.driver)
                     # กด Tab 20 ครั้ง เพื่อหวังว่าจะไปตกที่ช่อง Username
                     actions.click() # Focus ที่หน้าเว็บ
-                    for _ in range(20):
+                    for _ in range(5):
                         actions.send_keys(Keys.TAB)
                     actions.perform()
                     
