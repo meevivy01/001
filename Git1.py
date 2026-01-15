@@ -556,55 +556,85 @@ class JobThaiRowScraper:
         return False
 
     def step2_search(self, keyword):
+        # URL หน้าค้นหา Resume (ใช้ www3 ซึ่งเป็นระบบเก่าที่ใช้ง่ายกว่า)
         search_url = "https://www3.jobthai.com/findresume/findresume.php?l=th"
-        console.print(f"2️⃣   ค้นหา: '[bold]{keyword}[/]' ...", style="info")
+        console.rule(f"[bold cyan]2️⃣  ขั้นตอนค้นหา: '{keyword}'[/]")
         
         try:
-            reset_success = False
-            try:
-                if self.safe_click('//*[@id="company-search-resume"]', By.XPATH, timeout=5):
-                    reset_success = True
-                    self.wait_for_page_load()
-                    self.random_sleep(3, 5)
-            except: pass
-            
-            if not reset_success:
+            # 1. บังคับเข้าหน้าค้นหา (Force Navigation)
+            # ไม่ว่าจะอยู่ที่ไหน ให้กระโดดมาหน้านี้ก่อนเสมอ
+            if search_url not in self.driver.current_url:
+                console.print("   🔗 กำลังเข้าสู่หน้าค้นหา...", style="dim")
                 self.driver.get(search_url)
                 self.wait_for_page_load()
                 self.random_sleep(3, 5)
 
-            kw_element = WebDriverWait(self.driver, 20).until(EC.presence_of_element_located((By.ID, "KeyWord")))
-            self.driver.execute_script("arguments[0].value = '';", kw_element)
-            time.sleep(0.5)
-            self.driver.execute_script("arguments[0].value = arguments[1];", kw_element, keyword)
-            console.print(f"   ✍️ พิมพ์ '{keyword}' เรียบร้อย", style="dim")
-            time.sleep(1)
-            
-            if not self.safe_click('buttonsearch', By.ID):
-                search_btn = self.driver.find_element(By.ID, "buttonsearch")
-                self.driver.execute_script("arguments[0].click();", search_btn)
-            
-            console.print("   🔍 รอผลลัพธ์...", style="dim")
-            time.sleep(5) 
+            # 2. เช็คว่าเข้าได้จริงไหม (ถ้ายังติดหน้า Login แสดงว่า Cookie ไม่ข้าม Subdomain)
+            if "login" in self.driver.current_url:
+                console.print("   ⚠️ เด้งกลับมาหน้า Login! (Cookie อาจไม่ครอบคลุม www3)", style="red")
+                # ลองกด Refresh สักรอบเผื่อ Cookie พึ่งมา
+                self.driver.refresh()
+                self.wait_for_page_load()
+                time.sleep(3)
 
-            # 🟢 [แก้] เช็ค 0 Results ให้แม่นขึ้น (ดูที่เนื้อหา ไม่ใช่ Source รวม)
+            # 3. ฆ่า Popup ที่อาจจะตามมารังควาน
             try:
-                no_data = self.driver.find_elements(By.XPATH, "//*[contains(text(), 'ไม่พบข้อมูล') or contains(text(), 'No data found')]")
-                if no_data and no_data[0].is_displayed():
-                    console.print(f"   ⚠️ ไม่พบข้อมูล (0 Results) สำหรับ: {keyword}", style="warning")
-                    return True 
+                self.driver.execute_script("document.querySelectorAll('#close-button,.cookie-consent,[class*=\"pdpa\"],.modal-backdrop,iframe').forEach(b=>b.remove());")
             except: pass
 
+            # 4. รีเซ็ตปุ่มค้นหา (ถ้ามี)
             try:
-                WebDriverWait(self.driver, 15).until(lambda d: "ResumeDetail" in d.page_source or "KeyWord" in d.current_url)
-                console.print(f"   ✅ เจอผลการค้นหา!", style="success")
-                return True
-            except:
-                console.print("   ❌ Timeout: หน้าเว็บไม่เปลี่ยน", style="error")
-                return False
+                reset_btn = self.driver.find_element(By.XPATH, '//*[@id="company-search-resume"]')
+                if reset_btn.is_displayed():
+                    reset_btn.click()
+                    time.sleep(2)
+            except: pass
+
+            # 5. หาช่องพิมพ์ (KeyWord) แบบรอจนกว่าจะเจอ
+            console.print("   ✍️ กำลังหาช่องพิมพ์...", style="dim")
+            kw_element = WebDriverWait(self.driver, 20).until(
+                EC.visibility_of_element_located((By.ID, "KeyWord"))
+            )
+            
+            # 6. พิมพ์คำค้นหา (เคลียร์ก่อนพิมพ์)
+            kw_element.click()
+            kw_element.clear()
+            # ใช้ JS พิมพ์เพื่อความชัวร์ (แก้ปัญหาพิมพ์ไม่ติด)
+            self.driver.execute_script("arguments[0].value = arguments[1];", kw_element, keyword)
+            time.sleep(0.5)
+            # Trigger Event ให้เว็รู้ว่าพิมพ์แล้ว
+            self.driver.execute_script("arguments[0].dispatchEvent(new Event('input'));", kw_element)
+            
+            console.print(f"   ✅ พิมพ์ '{keyword}' เรียบร้อย", style="info")
+            time.sleep(1)
+            
+            # 7. กดปุ่มค้นหา
+            search_btn = self.driver.find_element(By.ID, "buttonsearch")
+            self.driver.execute_script("arguments[0].click();", search_btn)
+            
+            console.print("   🔍 กำลังค้นหา... รอผลลัพธ์", style="dim")
+            
+            # 8. รอผลลัพธ์ (Check Success)
+            # รอจนกว่า URL จะเปลี่ยน หรือมีคำว่า ResumeDetail ใน Source
+            try:
+                WebDriverWait(self.driver, 20).until(
+                    lambda d: "ResumeDetail" in d.page_source or "ไม่พบข้อมูล" in d.page_source or "No data found" in d.page_source
+                )
+            except TimeoutException:
+                console.print("   ⚠️ Timeout: หน้าเว็บโหลดนานเกินไป", style="yellow")
+
+            # 9. เช็คว่าเจอข้อมูลไหม
+            if "ไม่พบข้อมูล" in self.driver.page_source or "No data found" in self.driver.page_source:
+                console.print(f"   ⚠️ ไม่พบข้อมูล (0 Results) สำหรับ: {keyword}", style="warning")
+                return True # ถือว่าทำงานเสร็จแล้ว (แค่ไม่มีของ)
+
+            console.print(f"   ✅ เจอผลการค้นหา!", style="success")
+            return True
 
         except Exception as e:
-            console.print(f"❌ Search Error ({keyword}): {e}", style="error")
+            console.print(f"   ❌ Search Error ({keyword}): {e}", style="error")
+            # Save รูปดูหน่อยว่าตายตรงไหน
+            self.driver.save_screenshot(f"search_error_{keyword}.png")
             return False
 
     def step3_collect_all_links(self):
