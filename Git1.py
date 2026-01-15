@@ -402,69 +402,99 @@ class JobThaiRowScraper:
                 if not clicked_tab:
                     raise Exception("หาปุ่ม 'หาคน' ไม่เจอ หรือกดไม่ได้")
 
+               # ==============================================================================
+                # 4️⃣ STEP 4: กรอก User/Pass และ "คลิกปุ่ม" (แก้จากการกด Enter)
                 # ==============================================================================
-                # 4️⃣ STEP 4: กรอก User/Pass แล้วกด Enter
-                # ==============================================================================
-                console.print("   4️⃣  กำลังกรอกข้อมูลและกด Enter...", style="dim")
+                console.print("   4️⃣  กำลังกรอกข้อมูลและกดปุ่ม Login...", style="dim")
                 kill_blockers()
 
-                # ใช้ท่าไม้ตาย Nuclear Injection เพื่อความชัวร์ 100%
-                js_fill = """
+                # ใช้ JS กรอก + Trigger Events ครบชุด + กดปุ่ม Submit
+                js_fill_and_click = """
                     var inputs = document.getElementsByTagName('input');
                     var userFilled = false;
                     var passFilled = false;
                     
+                    // 1. กรอก User & Pass
                     for(var i=0; i<inputs.length; i++) {
                         var t = inputs[i].type;
-                        if(inputs[i].offsetParent === null) continue; // ข้ามตัวที่ซ่อนอยู่
+                        if(inputs[i].offsetParent === null) continue; 
 
                         if(!userFilled && (t == 'text' || t == 'email')) {
                             inputs[i].value = arguments[0];
                             inputs[i].dispatchEvent(new Event('input', {bubbles:true}));
+                            inputs[i].dispatchEvent(new Event('change', {bubbles:true})); // เพิ่ม change
+                            inputs[i].dispatchEvent(new Event('blur', {bubbles:true}));   // เพิ่ม blur
                             userFilled = true;
                         }
                         if(!passFilled && t == 'password') {
                             inputs[i].value = arguments[1];
                             inputs[i].dispatchEvent(new Event('input', {bubbles:true}));
+                            inputs[i].dispatchEvent(new Event('change', {bubbles:true})); // เพิ่ม change
+                            inputs[i].dispatchEvent(new Event('blur', {bubbles:true}));   // เพิ่ม blur
                             passFilled = true;
                         }
                     }
-                    return userFilled && passFilled;
+
+                    // 2. หาปุ่ม Login แล้วกด (ดีกว่ากด Enter)
+                    var clicked = false;
+                    if(userFilled && passFilled) {
+                        var btns = document.getElementsByTagName('button');
+                        for(var j=0; j<btns.length; j++) {
+                            var txt = (btns[j].innerText || '').toLowerCase();
+                            // ดักคำว่า เข้าสู่ระบบ หรือ Login หรือปุ่ม Type Submit
+                            if(btns[j].type === 'submit' || txt.includes('เข้าสู่ระบบ') || txt.includes('login')) {
+                                btns[j].click();
+                                clicked = true;
+                                break; // กดแล้วจบเลย
+                            }
+                        }
+                    }
+                    return { filled: (userFilled && passFilled), clicked: clicked };
                 """
-                filled = self.driver.execute_script(js_fill, MY_USERNAME, MY_PASSWORD)
                 
-                if filled:
-                    console.print("      ✅ กรอกรหัสเสร็จแล้ว -> กด ENTER!", style="green")
-                    # กด Enter ที่หน้าจอ
-                    ActionChains(self.driver).send_keys(Keys.ENTER).perform()
+                result = self.driver.execute_script(js_fill_and_click, MY_USERNAME, MY_PASSWORD)
+                
+                if result and result.get('filled'):
+                    if result.get('clicked'):
+                        console.print("      ✅ กรอกรหัสและคลิกปุ่ม Submit สำเร็จ!", style="green")
+                    else:
+                        console.print("      ⚠️ กรอกเสร็จแต่หาปุ่มกดไม่เจอ -> ลองกด Enter สำรอง", style="yellow")
+                        ActionChains(self.driver).send_keys(Keys.ENTER).perform()
                 else:
-                    raise Exception("หาช่อง Input ไม่เจอ (กรอกไม่สำเร็จ)")
+                    raise Exception("หาช่อง Input ไม่เจอ (Script ทำงานไม่สมบูรณ์)")
 
                 # ==============================================================================
-                # 5️⃣ STEP 5: ตรวจสอบผลลัพธ์ (Success Check)
+                # 5️⃣ STEP 5: ตรวจสอบผลลัพธ์ & หาข้อความ Error
                 # ==============================================================================
                 console.print("   5️⃣  ตรวจสอบผลลัพธ์...", style="dim")
-                time.sleep(3)
                 
-                # เช็ค URL
+                # รอให้ URL เปลี่ยน (เพิ่มเวลาเป็น 10 วิ เผื่อเน็ตช้า)
+                try:
+                    WebDriverWait(self.driver, 10).until(
+                        lambda d: "auth.jobthai.com" not in d.current_url and "login" not in d.current_url
+                    )
+                except: pass # ถ้า timeout ก็ให้ไปเช็คข้างล่างต่อ
+
                 curr_url = self.driver.current_url
-                if "auth.jobthai.com" not in curr_url and "login" not in curr_url and ("dashboard" in curr_url or "resume" in curr_url):
+                
+                # ✅ กรณีผ่าน
+                if "dashboard" in curr_url or "resume" in curr_url or "jobpost" in curr_url:
                     console.print(f"🎉 Login สำเร็จ! (URL: {curr_url})", style="bold green")
                     return True
-                else:
-                    raise Exception(f"Login ไม่ผ่าน (ยังติดอยู่ที่: {curr_url})")
-
-            except Exception as e:
-                # ❌ LOGGING เมื่อพัง
-                console.print(f"\n[bold red]❌ ขั้นตอนล้มเหลว![/]")
-                console.print(f"   สาเหตุ: {e}")
-                console.print(f"   URL ปัจจุบัน: {self.driver.current_url}")
                 
-                # แนบลิงค์ภาพ Error
-                timestamp = datetime.datetime.now().strftime("%H%M%S")
-                err_img = f"error_step1_{timestamp}.png"
-                self.driver.save_screenshot(err_img)
-                console.print(f"   📸 ดูภาพหลักฐานได้ที่: [yellow]{err_img}[/]\n")
+                # ❌ กรณีไม่ผ่าน -> พยายามอ่าน Error Message บนหน้าจอ
+                else:
+                    error_msg = "หาสาเหตุไม่พบ"
+                    try:
+                        # ลองดึงข้อความ Error ทั่วไป (สีแดงๆ)
+                        error_elem = self.driver.execute_script("""
+                            return document.querySelector('.text-danger, .error-message, .alert-danger')?.innerText;
+                        """)
+                        if error_elem: error_msg = error_elem.strip()
+                    except: pass
+                    
+                    console.print(f"      ⚠️ หน้าเว็บแจ้งว่า: [bold red]'{error_msg}'[/]", style="white")
+                    raise Exception(f"Login ไม่ผ่าน (ติดที่ {curr_url}) - Msg: {error_msg}")
 
         console.print("🚫 หมดความพยายาม -> ใช้ Cookie สำรอง", style="bold red")
         return self.login_with_cookie()
