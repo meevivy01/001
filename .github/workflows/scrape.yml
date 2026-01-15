@@ -15,9 +15,6 @@ jobs:
     env:
       TZ: 'Asia/Bangkok'
 
-    env:
-      EMAIL_USE_HISTORY: "True"
-
     steps:
       # 1. Checkout code
       - name: Checkout code
