@@ -278,19 +278,16 @@ class JobThaiRowScraper:
             return ""
         except: return ""
 
-    # ==============================================================================
-    # 🔥 STEP 1: LOGIN (Xvfb Supported - กดปุ่มได้ชัวร์กว่า)
-    # ==============================================================================
     def step1_login(self):
         # 1. เข้าลิงค์เริ่มต้น (หน้าหางาน)
-        start_url = "https://www.jobthai.com/%E0%B8%AB%E0%B8%B2%E0%B8%87%E0%B8%B2%E0%B8%99"
+        start_url = "https://www.jobthai.com"
         # 2. ลิงค์เป้าหมายที่จะกด Tab หา
         target_login_link = "https://www.jobthai.com/login?page=resumes&l=th"
         
         max_retries = 3
 
         for attempt in range(1, max_retries + 1):
-            console.rule(f"[bold cyan]🔐 Login Attempt {attempt}/{max_retries} (Refresh on Fail Mode)[/]")
+            console.rule(f"[bold cyan]🔐 Login Attempt {attempt}/{max_retries} (Target: #login_company)[/]")
             
             try:
                 # ==============================================================================
@@ -388,49 +385,25 @@ class JobThaiRowScraper:
                     raise Exception("หาปุ่ม 'หาคน' ไม่เจอ หรือกดไม่ได้")
 
                 # ==============================================================================
-                # 4️⃣ STEP 4: กรอกข้อมูล & "รอ" กดปุ่ม (Target ID: login_company)
-                # 🔥 เพิ่ม Logic: ถ้าหาปุ่มไม่เจอ -> Refresh 1 ที
+                # 4️⃣ STEP 4: กรอกข้อมูล & กดปุ่ม #login_company (ตัด Refresh ออก)
                 # ==============================================================================
-                console.print("   4️⃣  กำลังกรอกข้อมูลและกดปุ่ม Submit...", style="dim")
+                console.print("   4️⃣  กำลังกรอกข้อมูลและกดปุ่ม #login_company...", style="dim")
                 kill_blockers()
 
-                # --- 🔄 Logic เช็คปุ่มและ Refresh ---
+                # รอให้ปุ่มโหลด (แต่ไม่ Refresh แล้วถ้าไม่เจอ)
                 try:
-                    # รอบแรก: รอ 5 วินาที
-                    WebDriverWait(self.driver, 5).until(
-                        EC.presence_of_element_located((By.ID, "login_company"))
+                    WebDriverWait(self.driver, 10).until(
+                        EC.presence_of_element_located((By.CSS_SELECTOR, "#login_company"))
                     )
                 except:
-                    # ⚠️ ถ้าไม่เจอ: Refresh แล้วลองใหม่
-                    console.print("      ⚠️ หาปุ่ม Login ไม่เจอ -> 🔄 Refresh หน้าจอ 1 ครั้ง...", style="bold yellow")
-                    self.driver.refresh()
-                    self.wait_for_page_load()
-                    time.sleep(3)
-                    kill_blockers()
-
-                    # ต้องกดปุ่ม 'หาคน' ใหม่ด้วยเพราะหน้าเว็บรีเฟรช
-                    try:
-                        tab = self.driver.find_element(By.XPATH, "//*[@id='login_tab_employer']")
-                        self.driver.execute_script("arguments[0].click();", tab)
-                        time.sleep(2)
-                    except: pass
-                    
-                    # รอบสอง: รออีกที (10 วินาที)
-                    try:
-                        WebDriverWait(self.driver, 10).until(
-                            EC.presence_of_element_located((By.ID, "login_company"))
-                        )
-                        console.print("      ✅ ปุ่มมาแล้วหลัง Refresh!", style="green")
-                    except:
-                        console.print("      ⚠️ ยังหาปุ่มไม่เจออยู่ดี (จะลองเสี่ยงกดด้วย JS)", style="red")
-                # ----------------------------------------
+                    console.print("      ⚠️ รอ 10 วิแล้วปุ่ม #login_company ยังไม่มา (จะใช้ JS querySelector กดเลย)", style="yellow")
 
                 js_fill_and_click = """
                     var user = document.getElementById('login-form-username');
                     var pass = document.getElementById('login-form-password');
                     var filled = false;
 
-                    // --- Part A: กรอกข้อมูล ---
+                    // --- Part A: กรอกข้อมูล (React Event Hack) ---
                     function setNativeValue(element, value) {
                         if (!element) return false;
                         var lastValue = element.value;
@@ -449,7 +422,7 @@ class JobThaiRowScraper:
                         setNativeValue(pass, arguments[1]);
                         filled = true;
                     } else {
-                        // Fallback หา input ทั่วไป
+                        // Fallback
                         var inputs = document.getElementsByTagName('input');
                         for(var i=0; i<inputs.length; i++) {
                              if(inputs[i].type == 'text' || inputs[i].type == 'email') setNativeValue(inputs[i], arguments[0]);
@@ -458,18 +431,18 @@ class JobThaiRowScraper:
                         filled = true;
                     }
 
-                    // --- Part B: กดปุ่ม (Target ID: login_company) ---
+                    // --- Part B: กดปุ่ม (Target: #login_company) ---
                     var clicked = false;
                     var method = "none";
                     
-                    // 1. ลองกดปุ่ม ID login_company ก่อน
-                    var targetBtn = document.getElementById('login_company');
+                    // 1. ใช้ querySelector ตามคำสั่ง
+                    var targetBtn = document.querySelector("#login_company");
                     if (targetBtn) {
                         targetBtn.click();
                         clicked = true;
-                        method = "id_match";
+                        method = "#login_company";
                     } 
-                    // 2. ถ้าไม่เจอ ให้วนหาปุ่มทั่วไป
+                    // 2. Fallback: เผื่อหาไม่เจอ ลองหาปุ่มที่มีคำว่า "เข้าสู่ระบบ"
                     else {
                         var btns = document.querySelectorAll('button');
                         for (var i=0; i<btns.length; i++) {
@@ -491,7 +464,7 @@ class JobThaiRowScraper:
                 if result and result.get('filled'):
                     if result.get('clicked'):
                         method_used = result.get('method')
-                        msg_style = "green" if method_used == "id_match" else "yellow"
+                        msg_style = "green" if method_used == "#login_company" else "yellow"
                         console.print(f"      ✅ กรอกรหัสและกดปุ่มสำเร็จ! (Method: {method_used})", style=msg_style)
                     else:
                         console.print("      ⚠️ หาปุ่มไม่เจอ -> Focus ช่องรหัสแล้วกด Enter", style="yellow")
@@ -524,7 +497,7 @@ class JobThaiRowScraper:
                     console.print(f"🎉 Login สำเร็จ! (URL: {curr_url})", style="bold green")
                     return True
                 else:
-                    error_msg = "หาสาเหตุไม่พบ (อาจเป็นเพราะกดปุ่มไม่ติด หรือหน้าเว็บโหลดไม่เสร็จ)"
+                    error_msg = "หาสาเหตุไม่พบ"
                     try:
                         error_elem = self.driver.execute_script("""
                             return document.querySelector('.text-danger, .error-message, .alert-danger, .ant-form-item-explain-error')?.innerText;
