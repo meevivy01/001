@@ -282,228 +282,136 @@ class JobThaiRowScraper:
     # 🔥 STEP 1: LOGIN (Xvfb Supported - กดปุ่มได้ชัวร์กว่า)
     # ==============================================================================
     def step1_login(self):
-        # URL หลัก
-        home_url = "https://www.jobthai.com/th/employer"
-        # URL บังคับ Login
-        force_login_url = "https://www.jobthai.com/th/jobpost"
-        # URL หลังบ้าน (Backdoor)
-        resume_url = "https://www.jobthai.com/th/resume"
+        # เริ่มต้นที่หน้า Resume (ตามที่เคยทำสำเร็จ)
+        target_url = "https://www.jobthai.com/th/resume"
+        # ข้อความเป้าหมายจากรูปภาพที่คุณส่งมา
+        target_href_keyword = "login?page=resumes"
         
-        max_retries = 10 
+        max_retries = 3 
 
         for attempt in range(1, max_retries + 1):
-            # ตั้งชื่อกลยุทธ์ให้ชัดเจน
-            strategies = {
-                1: "Normal Click",
-                2: "Refresh & Retry",
-                3: "Hard Reset & Direct URL",
-                4: "JS Injection",
-                5: "Nuclear Brute Force",
-                6: "Mobile Emulation Mode",
-                7: "DOM Surgery (Remove Junk)",
-                8: "Full Stack Event Trigger",
-                9: "Keyboard Navigation (Tab Key)",
-                10: "Backdoor via Resume Page"
-            }
-            strategy_name = strategies.get(attempt, "Desperate Measure")
-
-            console.rule(f"[bold cyan]🔐 Login Attempt {attempt}/{max_retries} ({strategy_name})[/]")
+            console.rule(f"[bold cyan]🔐 Login Attempt {attempt}/{max_retries} (Smart Tab Search)[/]")
 
             try:
-                # ---------------------------------------------------------
-                # 🔄 PHASE 1: การเตรียมหน้าเว็บ (Environment Setup)
-                # ---------------------------------------------------------
-                
-                # รอบ 1-2: Desktop ปกติ
-                if attempt <= 2:
-                    if attempt > 1: self.driver.refresh()
-                    else: 
-                        self.driver.set_window_size(1920, 1080)
-                        self.driver.get(home_url)
-                    self.wait_for_page_load()
-
-                # รอบ 3-5: Direct URL
-                elif attempt <= 5:
-                    if attempt == 3: self.driver.delete_all_cookies()
-                    self.driver.get(force_login_url)
-                    self.wait_for_page_load()
-
-                # รอบ 6: 📱 Mobile Mode (ย่อจอเป็น iPhone X)
-                elif attempt == 6:
-                    console.print("   📱 Switching to Mobile Viewport...", style="yellow")
-                    self.driver.set_window_size(375, 812)
-                    self.driver.get(home_url) # Mobile มัก redirect ไปหน้า mobile site
-                    self.wait_for_page_load()
-
-                # รอบ 7-9: กลับมา Desktop แต่เข้า Direct URL
-                elif attempt <= 9:
-                    self.driver.set_window_size(1920, 1080)
-                    self.driver.get(force_login_url)
-                    self.wait_for_page_load()
-
-                # รอบ 10: 🚪 Backdoor (เข้าหน้า Resume)
-                elif attempt == 10:
-                    console.print("   🚪 Trying Backdoor via Resume Search...", style="bold magenta")
-                    self.driver.get(resume_url)
-                    self.wait_for_page_load()
-
+                # 1. เข้าหน้าเว็บ
+                self.driver.get(target_url)
+                self.wait_for_page_load()
                 self.random_sleep(3, 5)
-
-                # ---------------------------------------------------------
-                # 🛠️ PHASE 2: การจัดการหน้าเว็บ (Manipulation)
-                # ---------------------------------------------------------
                 
-                # ลบ Popup พื้นฐาน
+                # ฆ่า Popup ก่อนเริ่มกด Tab
                 try:
                     self.driver.execute_script("document.querySelectorAll('#close-button,.cookie-consent,[class*=\"pdpa\"],.modal-backdrop,iframe').forEach(b=>b.remove());")
                 except: pass
 
-                # รอบ 7: 🔪 DOM Surgery (ลบ Header/Footer ทิ้ง)
-                if attempt == 7:
-                    console.print("   🔪 Cutting out UI clutter...", style="red")
-                    self.driver.execute_script("""
-                        document.querySelectorAll('header, footer, nav, .banner, .advertisement').forEach(el => el.remove());
-                        // บังคับ Input ให้ลอยขึ้นมาบนสุด
-                        document.querySelectorAll('input').forEach(el => { el.style.position='relative'; el.style.zIndex='99999'; });
-                    """)
-
-                # รอบ 10: กดปุ่มในหน้า Resume เพื่อเรียก Login Modal
-                if attempt == 10:
-                    try:
-                        # กดปุ่มอะไรก็ได้ที่ต้อง Login เช่น "ดูเบอร์โทร"
-                        btns = self.driver.find_elements(By.XPATH, "//button[contains(., 'ดูข้อมูลติดต่อ') or contains(., 'View Contact')]")
-                        if btns: btns[0].click()
-                    except: pass
-
-                # ---------------------------------------------------------
-                # ✍️ PHASE 3: การป้อนข้อมูล (Injection / Typing)
-                # ---------------------------------------------------------
-                user_input_found = False
-
-                # [Group A] Human Typing (รอบ 1-2)
-                if attempt <= 2:
-                    # (Code เดิม: หาปุ่มกดเมนู -> พิมพ์ทีละตัว)
-                    # ถ้าหาไม่เจอให้ข้ามไป Group B
-                    if not self.driver.find_elements(By.CSS_SELECTOR, "input[type='password']"):
-                         # พยายามกดปุ่มเมนู (ใส่ logic การกดเมนูของคุณตรงนี้ถ้าจำเป็น)
-                         pass 
-
-                # [Group C] 📱 Mobile Input (รอบ 6)
-                if attempt == 6:
-                    # Mobile มักจะมีปุ่ม Hamburger Menu
-                    try:
-                        self.driver.execute_script("document.querySelector('button.navbar-toggler, .hamburger').click();")
-                        time.sleep(1)
-                    except: pass
-                    # ใช้ Nuclear Injection เพราะ Mobile Element อาจซับซ้อน
-                    js_nuclear = """
-                        var inputs = document.getElementsByTagName('input');
-                        var filled = false;
-                        for(var i=0; i<inputs.length; i++) {
-                            if(inputs[i].type == 'email' || inputs[i].type == 'text') { inputs[i].value = arguments[0]; filled=true; }
-                            if(inputs[i].type == 'password') { inputs[i].value = arguments[1]; filled=true; }
-                        }
-                        if(filled) document.querySelector('button[type="submit"]').click();
-                        return filled;
-                    """
-                    if self.driver.execute_script(js_nuclear, MY_USERNAME, MY_PASSWORD):
-                        user_input_found = True
-
-                # [Group D] ⚡ Full Stack Events (รอบ 8)
-                if attempt == 8:
-                    console.print("   ⚡ Triggering ALL Events...", style="cyan")
-                    js_full_stack = """
-                        function triggerAll(el, val) {
-                            el.value = val;
-                            ['focus', 'keydown', 'keypress', 'input', 'change', 'keyup', 'blur'].forEach(evt => {
-                                el.dispatchEvent(new Event(evt, { bubbles: true }));
-                            });
-                        }
-                        var u = document.querySelector("input[name*='user'], input[type='email']");
-                        var p = document.querySelector("input[name*='pass'], input[type='password']");
-                        if(u && p) { triggerAll(u, arguments[0]); triggerAll(p, arguments[1]); return true; }
-                        return false;
-                    """
-                    if self.driver.execute_script(js_full_stack, MY_USERNAME, MY_PASSWORD):
-                        user_input_found = True
-                        # กดปุ่ม Submit ด้วย JS
-                        self.driver.execute_script("document.querySelector('button[type=\"submit\"]').click()")
-
-                # [Group E] ⌨️ Keyboard Navigation (รอบ 9)
-                if attempt == 9:
-                    console.print("   ⌨️ Tab-mashing mode...", style="bold white")
-                    actions = ActionChains(self.driver)
-                    # กด Tab 20 ครั้ง เพื่อหวังว่าจะไปตกที่ช่อง Username
-                    actions.click() # Focus ที่หน้าเว็บ
-                    for _ in range(5):
-                        actions.send_keys(Keys.TAB)
-                    actions.perform()
+                # 2. ⌨️ เริ่มภารกิจกด TAB ตามหาลิงก์
+                console.print(f"   ⌨️ กำลังกด Tab หาลิงก์: [yellow]{target_href_keyword}[/]...", style="bold white")
+                
+                link_found = False
+                actions = ActionChains(self.driver)
+                
+                # คลิกที่ Body 1 ทีเพื่อให้แน่ใจว่า Focus อยู่ที่หน้าเว็บ
+                self.driver.find_element(By.TAG_NAME, 'body').click()
+                
+                # วนลูปกด Tab สูงสุด 100 ครั้ง
+                for i in range(100):
+                    actions.send_keys(Keys.TAB).perform()
                     
-                    # ลองพิมพ์ดู (Blind Typing)
-                    actions.send_keys(MY_USERNAME)
-                    actions.send_keys(Keys.TAB)
-                    actions.send_keys(MY_PASSWORD)
-                    actions.send_keys(Keys.ENTER)
-                    actions.perform()
-                    user_input_found = True # สมมติว่าเจอ เพราะเรามองไม่เห็น
+                    # ใช้ JS เช็คว่า Element ที่ Active อยู่คือลิงก์ที่เราตามหาไหม
+                    active_href = self.driver.execute_script("return document.activeElement.href;")
+                    
+                    # ตรวจสอบว่า href มีค่า และมีคำว่า login?page=resumes อยู่ข้างในไหม
+                    if active_href and target_href_keyword in str(active_href):
+                        console.print(f"      ✅ เจอปุ่มเป้าหมายแล้ว! (ที่การกดครั้งที่ {i+1})", style="bold green")
+                        console.print(f"      🔗 Link: {active_href}", style="dim")
+                        
+                        # เจอแล้วกด Enter ใส่เลย
+                        actions.send_keys(Keys.ENTER).perform()
+                        link_found = True
+                        break
+                    
+                    # หน่วงเวลานิดเดียวเพื่อให้ Tab ทำงานทัน
+                    time.sleep(0.1)
 
-                # Fallback: ถ้ายังไม่ได้ทำอะไรเลยในรอบนี้ ให้ใช้ Nuclear Injection (รอบ 7, 10 และอื่นๆ)
-                if not user_input_found:
-                    # Nuclear Logic เดิม
-                    js_nuclear = """
-                        var inputs = document.getElementsByTagName('input');
-                        var filled = false;
-                        for(var i=0; i<inputs.length; i++) {
-                            var t = inputs[i].getAttribute('type');
-                            if(t == 'text' || t == 'email') { inputs[i].value = arguments[0]; filled=true; }
-                            if(t == 'password') { inputs[i].value = arguments[1]; filled=true; }
+                if not link_found:
+                    console.print("   ⚠️ กด Tab จนเหนื่อยแต่หาลิงก์ไม่เจอ (จะลองใช้ JS หาปุ่มแทน)", style="red")
+                    # Fallback: ใช้ JS หาปุ่มแล้วกด (กันเหนียว)
+                    try:
+                        self.driver.execute_script(f"""
+                            var links = document.querySelectorAll('a');
+                            for(var i=0; i<links.length; i++) {{
+                                if(links[i].href.includes('{target_href_keyword}')) {{
+                                    links[i].click();
+                                    break;
+                                }}
+                            }}
+                        """)
+                        link_found = True
+                    except: pass
+
+                # 3. 📝 รอให้ช่องกรอกรหัสโผล่มา
+                console.print("   ⏳ รอหน้า Login/Modal เด้ง...", style="dim")
+                time.sleep(3)
+                
+                # 4. 💉 กรอกข้อมูล (ใช้ท่าไม้ตาย Nuclear Injection ที่เสถียรที่สุด)
+                console.print("   💉 กำลังกรอกรหัสผ่าน...", style="cyan")
+                js_nuclear = """
+                    var inputs = document.getElementsByTagName('input');
+                    var filled = false;
+                    for(var i=0; i<inputs.length; i++) {
+                        var t = inputs[i].getAttribute('type');
+                        // หาช่อง User
+                        if((t == 'text' || t == 'email') && !inputs[i].value) { 
+                            inputs[i].value = arguments[0]; 
+                            inputs[i].dispatchEvent(new Event('input', { bubbles: true }));
+                            filled=true; 
                         }
-                        if(filled) {
-                            var btns = document.getElementsByTagName('button');
-                            for(var j=0; j<btns.length; j++) {
-                                if(btns[j].type == 'submit' || btns[j].innerText.includes('Login')) btns[j].click();
+                        // หาช่อง Password
+                        if(t == 'password') { 
+                            inputs[i].value = arguments[1]; 
+                            inputs[i].dispatchEvent(new Event('input', { bubbles: true }));
+                            filled=true; 
+                        }
+                    }
+                    
+                    // กดปุ่ม Submit
+                    if(filled) {
+                        var btns = document.getElementsByTagName('button');
+                        for(var j=0; j<btns.length; j++) {
+                            var txt = (btns[j].innerText || '').toLowerCase();
+                            if(btns[j].type == 'submit' || txt.includes('login') || txt.includes('เข้าสู่ระบบ')) {
+                                btns[j].click();
                             }
                         }
-                        return filled;
-                    """
-                    if self.driver.execute_script(js_nuclear, MY_USERNAME, MY_PASSWORD):
-                        user_input_found = True
+                    }
+                    return filled;
+                """
+                
+                status = self.driver.execute_script(js_nuclear, MY_USERNAME, MY_PASSWORD)
+                
+                if not status:
+                     # ถ้า JS หาช่องไม่เจอ ลองกด Tab อีกสัก 5 ทีเผื่อ Focus ยังไม่เข้า Modal
+                     actions.send_keys(Keys.TAB).send_keys(Keys.TAB).perform()
+                     # ลองกรอกใหม่
+                     self.driver.execute_script(js_nuclear, MY_USERNAME, MY_PASSWORD)
 
-                # ---------------------------------------------------------
-                # ✅ PHASE 4: ตรวจสอบผลลัพธ์
-                # ---------------------------------------------------------
+                # 5. ✅ ตรวจสอบผลลัพธ์
                 console.print("   📝 รอตรวจสอบสิทธิ์...", style="dim")
-                for _ in range(20): # รอ 20 วิ
+                for _ in range(25):
                     time.sleep(1)
                     curr = self.driver.current_url
+                    # ถ้า URL เปลี่ยนไป Dashboard หรือ Resume แสดงว่าผ่าน
                     if "auth.jobthai.com" not in curr and "login" not in curr and ("dashboard" in curr or "resume" in curr):
-                        console.print(f"🎉 Login สำเร็จ! (ด้วยท่า {strategy_name})", style="bold green")
+                        console.print(f"🎉 Login สำเร็จ! (URL: {curr})", style="bold green")
                         return True
                 
-                # ❌ LOGGING เมื่อ Login ไม่สำเร็จในรอบนั้น
                 console.print(f"   ❌ รอบที่ {attempt} ล้มเหลว", style="bold red")
-                console.print(f"      🔗 URL ค้างอยู่ที่: {self.driver.current_url}", style="dim")
-                console.print(f"      👀 Page Title: {self.driver.title}", style="dim")
-                
-                # Save Screenshot
-                timestamp = datetime.datetime.now().strftime("%H%M%S")
-                fail_img_name = f"login_fail_attempt_{attempt}_{timestamp}.png"
-                self.driver.save_screenshot(fail_img_name)
-                console.print(f"      📸 บันทึกภาพ: [bold yellow]{fail_img_name}[/]")
+                self.driver.save_screenshot(f"login_fail_{attempt}.png")
 
             except Exception as e:
-                # 🚨 ERROR LOGGING SECTION (เมื่อโปรแกรม Crash)
-                console.print(f"\n[bold red]⚠️ CRITICAL ERROR รอบที่ {attempt}[/]")
-                console.print(f"   📖 รายละเอียด: {e}")
-                console.print(f"   🔗 URL ล่าสุด: {self.driver.current_url}")
-                console.print(f"   👀 Page Title: {self.driver.title}")
-                
-                timestamp = datetime.datetime.now().strftime("%H%M%S")
-                err_img_name = f"login_error_attempt_{attempt}_{timestamp}.png"
-                self.driver.save_screenshot(err_img_name)
-                console.print(f"   📸 บันทึกภาพ Error: [bold yellow]{err_img_name}[/]\n")
+                console.print(f"   ⚠️ Error: {e}", style="warning")
+                self.driver.save_screenshot(f"error_attempt_{attempt}.png")
 
-        console.print("🚫 หมดทุกกระบวนท่า 1-10 แล้ว -> ยอมแพ้", style="bold red")
+        console.print("🚫 Login ไม่ผ่าน -> ใช้ Cookie สำรอง", style="bold red")
         return self.login_with_cookie()
 
     def login_with_cookie(self):
