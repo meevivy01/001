@@ -46,7 +46,7 @@ COMPETITORS_PATH = "compe.yaml"
 CLIENTS_PATH = "co.yaml"
 TIER1_PATH = "tier1.yaml"
 RESUME_IMAGE_FOLDER = "resume_images" 
-USE_HEADLESS_JOBTHAI = False # 🟢 ปรับเป็น False เพื่อใช้ Xvfb
+USE_HEADLESS_JOBTHAI = False 
 EMAIL_USE_HISTORY = False        
 
 rec_env = os.getenv("EMAIL_RECEIVER")
@@ -97,7 +97,7 @@ if os.path.exists(CLIENTS_PATH):
 TARGET_UNIVERSITIES = ["แม่ฟ้าหลวง","มหาลัยแม่ฟ้าหลวง", "Mae Fah Luang University"]  
 TARGET_FACULTIES = ["เครื่องสำอาง","Cosmetic Science","ความงาม"] 
 TARGET_MAJORS = ["เครื่องสำอาง", "วิทยาศาสตร์เครื่องสำอาง","Cosmetic Science", "Cosmetics", "Cosmetic","ความงาม"]
-SEARCH_KEYWORDS = ["แม่ฟ้าหลวง เครื่องสำอาง"] #"Cosmetic Mae Fah Luang", "Technology Mae Fah Luang"
+SEARCH_KEYWORDS = ["แม่ฟ้าหลวง เครื่องสำอาง"]
 
 
 KEYWORDS_CONFIG = {
@@ -154,7 +154,7 @@ class JobThaiRowScraper:
         opts.add_argument("--disable-gpu") 
         opts.add_argument("--lang=th-TH")
         
-        # ✅ ใช้ Static User Agent (ไม่ต้องสุ่มแล้ว เพื่อให้ Cookie ไม่หลุด)
+        # ✅ ใช้ Static User Agent
         my_static_ua = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36"
         opts.add_argument(f'--user-agent={my_static_ua}')
 
@@ -168,8 +168,6 @@ class JobThaiRowScraper:
         self.wait = WebDriverWait(self.driver, 20)
         self.total_profiles_viewed = 0 
         self.all_scraped_data = []
-        
-        # กำหนดค่า self.ua เป็น None กันเหนียวไว้ก่อน (แม้จะไม่ใช้แล้วก็ตาม)
         self.ua = None 
 
     def save_history(self):
@@ -178,7 +176,6 @@ class JobThaiRowScraper:
             with open(self.history_file, 'w', encoding='utf-8') as f: json.dump(self.history_data, f, ensure_ascii=False, indent=4)
         except: pass
 
-    # 🔴 จุดที่แก้: เปลี่ยนให้ฟังก์ชันนี้ไม่ทำอะไรเลย (pass) เพราะเราใช้ User Agent แบบ Fixed แล้ว
     def set_random_user_agent(self):
         pass 
 
@@ -279,20 +276,13 @@ class JobThaiRowScraper:
         except: return ""
 
     def step1_login(self):
-        # 1. เข้าลิงค์เริ่มต้น (หน้าหางาน)
         start_url = "https://www.jobthai.com"
-        # 2. ลิงค์เป้าหมายที่จะกด Tab หา
         target_login_link = "https://www.jobthai.com/login?page=resumes&l=th"
-        
         max_retries = 3
 
         for attempt in range(1, max_retries + 1):
             console.rule(f"[bold cyan]🔐 Login Attempt {attempt}/{max_retries} (Target: #login_company)[/]")
-            
             try:
-                # ==============================================================================
-                # 🛑 Helper: ฟังก์ชันกำจัดสิ่งกีดขวาง
-                # ==============================================================================
                 def kill_blockers():
                     try:
                         self.driver.execute_script("""
@@ -300,9 +290,6 @@ class JobThaiRowScraper:
                         """)
                     except: pass
 
-                # ==============================================================================
-                # 1️⃣ STEP 1: เข้าสู่หน้าเว็บไซต์
-                # ==============================================================================
                 console.print("   1️⃣  กำลังเข้าสู่หน้า: [yellow]jobthai.com/หางาน[/]...", style="dim")
                 try:
                     self.driver.get(start_url)
@@ -313,9 +300,6 @@ class JobThaiRowScraper:
                 except Exception as e:
                     raise Exception(f"เข้าเว็บไม่สำเร็จ: {e}")
 
-                # ==============================================================================
-                # 2️⃣ STEP 2: กด TAB หาลิงก์ Login
-                # ==============================================================================
                 console.print(f"   2️⃣  เริ่มภารกิจกด TAB หาลิงก์: [yellow]{target_login_link}[/]...", style="dim")
                 
                 link_found = False
@@ -331,7 +315,7 @@ class JobThaiRowScraper:
                         console.print(f"      ✅ เจอปุ่มเป้าหมายแล้ว! (กด Tab ครั้งที่ {i+1})", style="bold green")
                         actions.send_keys(Keys.ENTER).perform()
                         link_found = True
-                        time.sleep(3) # รอ Modal เด้ง
+                        time.sleep(3) 
                         break
                     time.sleep(0.05)
 
@@ -350,9 +334,6 @@ class JobThaiRowScraper:
                     if not found_by_js:
                         raise Exception(f"หาลิงก์ {target_login_link} ไม่เจอทั้ง Tab และ JS")
 
-                # ==============================================================================
-                # 3️⃣ STEP 3: กดเลือก "หาคน" (Employer Tab)
-                # ==============================================================================
                 console.print("   3️⃣  กำลังหาปุ่ม 'หาคน' (Employer Tab)...", style="dim")
                 kill_blockers()
                 
@@ -384,13 +365,9 @@ class JobThaiRowScraper:
                 if not clicked_tab:
                     raise Exception("หาปุ่ม 'หาคน' ไม่เจอ หรือกดไม่ได้")
 
-                # ==============================================================================
-                # 4️⃣ STEP 4: กรอกข้อมูล & กดปุ่ม #login_company (ตัด Refresh ออก)
-                # ==============================================================================
                 console.print("   4️⃣  กำลังกรอกข้อมูลและกดปุ่ม #login_company...", style="dim")
                 kill_blockers()
 
-                # รอให้ปุ่มโหลด (แต่ไม่ Refresh แล้วถ้าไม่เจอ)
                 try:
                     WebDriverWait(self.driver, 10).until(
                         EC.presence_of_element_located((By.CSS_SELECTOR, "#login_company"))
@@ -403,7 +380,6 @@ class JobThaiRowScraper:
                     var pass = document.getElementById('login-form-password');
                     var filled = false;
 
-                    // --- Part A: กรอกข้อมูล (React Event Hack) ---
                     function setNativeValue(element, value) {
                         if (!element) return false;
                         var lastValue = element.value;
@@ -422,7 +398,6 @@ class JobThaiRowScraper:
                         setNativeValue(pass, arguments[1]);
                         filled = true;
                     } else {
-                        // Fallback
                         var inputs = document.getElementsByTagName('input');
                         for(var i=0; i<inputs.length; i++) {
                              if(inputs[i].type == 'text' || inputs[i].type == 'email') setNativeValue(inputs[i], arguments[0]);
@@ -431,18 +406,15 @@ class JobThaiRowScraper:
                         filled = true;
                     }
 
-                    // --- Part B: กดปุ่ม (Target: #login_company) ---
                     var clicked = false;
                     var method = "none";
                     
-                    // 1. ใช้ querySelector ตามคำสั่ง
                     var targetBtn = document.querySelector("#login_company");
                     if (targetBtn) {
                         targetBtn.click();
                         clicked = true;
                         method = "#login_company";
                     } 
-                    // 2. Fallback: เผื่อหาไม่เจอ ลองหาปุ่มที่มีคำว่า "เข้าสู่ระบบ"
                     else {
                         var btns = document.querySelectorAll('button');
                         for (var i=0; i<btns.length; i++) {
@@ -477,9 +449,6 @@ class JobThaiRowScraper:
                 else:
                     raise Exception("หาช่อง Input ไม่เจอ")
 
-                # ==============================================================================
-                # 5️⃣ STEP 5: ตรวจสอบผลลัพธ์
-                # ==============================================================================
                 console.print("   5️⃣  ตรวจสอบผลลัพธ์...", style="dim")
                 
                 try:
@@ -528,49 +497,32 @@ class JobThaiRowScraper:
             
         try:
             console.print("🍪 กำลังโหลด Cookie...", style="info")
-            
-            # 1. เข้าหน้าเว็บเปล่าๆ ของ Domain นั้นก่อน (สำคัญมาก เพื่อให้ Domain scope ตรงกัน)
             self.driver.get("https://www.jobthai.com/th/employer")
             self.random_sleep(2, 3)
-            
-            # 2. ลบ Cookie เดิมที่ติดมากับ Session ใหม่ทิ้งให้หมด
             self.driver.delete_all_cookies()
             
-            # 3. แปลงและยัด Cookie
             cookies_list = json.loads(cookies_env)
             for cookie in cookies_list:
-                # คัดเฉพาะ Key ที่ Selenium รองรับ (ถ้าเอา key แปลกๆ ไปด้วย จะ Error)
                 cookie_dict = {
                     'name': cookie.get('name'),
                     'value': cookie.get('value'),
-                    'domain': cookie.get('domain'), # สำคัญ: ต้องตรงกับเว็บที่เปิด
+                    'domain': cookie.get('domain'), 
                     'path': cookie.get('path', '/'),
-                    # 'secure': cookie.get('secure', False), # บางทีใส่ Secure แล้วพัง ถ้าเว็บไม่ strict ให้ comment ออก
-                    # 'expiry': cookie.get('expirationDate') # ไม่ต้องใส่ expiry ก็ได้ ถ้าอยากให้เป็น Session Cookie
                 }
-                
-                # Fix Domain: บางที Cookie มาเป็น .jobthai.com แต่เราเข้า www.jobthai.com
-                # ให้ตัดจุดข้างหน้าออกเพื่อความชัวร์
                 if 'jobthai' in str(cookie_dict['domain']):
                     try:
                         self.driver.add_cookie(cookie_dict)
-                    except Exception as e:
-                        # ถ้า add ไม่เข้า ข้ามไป (บางอันเป็น 3rd party cookie)
-                        pass
+                    except Exception as e: pass
             
             console.print("   ✅ ยัด Cookie เสร็จแล้ว -> Refresh หน้าจอ", style="dim")
-            
-            # 4. Refresh เพื่อให้ Cookie ทำงาน
             self.driver.refresh()
             self.wait_for_page_load()
             self.random_sleep(3, 5)
 
-            # 5. เช็คว่าเข้าได้จริงไหม
             if "login" not in self.driver.current_url and "dashboard" in self.driver.current_url:
                 console.print("🎉 Bypass Login สำเร็จด้วย Cookie!", style="success")
                 return True
             else:
-                # ลองไปหน้า Resume โดยตรงอีกทีเพื่อความชัวร์
                 self.driver.get("https://www3.jobthai.com/findresume/findresume.php?l=th")
                 self.random_sleep(2, 3)
                 if "login" not in self.driver.current_url:
@@ -579,16 +531,13 @@ class JobThaiRowScraper:
 
         except Exception as e:
             console.print(f"❌ Cookie Error: {e}", style="error")
-        
         return False
 
     def step2_search(self, keyword):
-        # URL หน้าค้นหา Resume (ระบบเดิม www3)
         search_url = "https://www3.jobthai.com/findresume/findresume.php?l=th"
         console.rule(f"[bold cyan]2️⃣  ขั้นตอนค้นหา: '{keyword}'[/]")
         
         try:
-            # 1. เช็คว่าอยู่หน้าค้นหาหรือยัง? ถ้ายัง ให้ Force Navigate
             current_url = self.driver.current_url
             if "findresume.php" not in current_url:
                 console.print(f"   🔗 ไม่อยู่หน้าค้นหา (อยู่ที่: {current_url}) -> กำลัง Force Redirect...", style="yellow")
@@ -596,16 +545,13 @@ class JobThaiRowScraper:
                 self.wait_for_page_load()
                 self.random_sleep(3, 5)
 
-            # 2. เช็คว่าโดนดีดกลับหน้า Login หรือไม่?
             if "login" in self.driver.current_url:
                 raise Exception("Cookie หลุด/ไม่ครอบคลุม -> ระบบดีดกลับมาหน้า Login")
 
-            # 3. เคลียร์ Popup
             try:
                 self.driver.execute_script("document.querySelectorAll('#close-button,.cookie-consent,[class*=\"pdpa\"],.modal-backdrop,iframe').forEach(b=>b.remove());")
             except: pass
 
-            # 4. รีเซ็ตปุ่มค้นหา (ถ้ามี)
             try:
                 reset_btn = self.driver.find_element(By.XPATH, '//*[@id="company-search-resume"]')
                 if reset_btn.is_displayed():
@@ -613,16 +559,13 @@ class JobThaiRowScraper:
                     time.sleep(2)
             except: pass
 
-            # 5. หาช่องพิมพ์ (รอสูงสุด 20 วินาที)
             console.print("   ✍️ กำลังหาช่องพิมพ์...", style="dim")
             kw_element = WebDriverWait(self.driver, 20).until(
                 EC.visibility_of_element_located((By.ID, "KeyWord"))
             )
             
-            # 6. พิมพ์คำค้นหา
             kw_element.click()
             kw_element.clear()
-            # ใช้ JS พิมพ์เพื่อความชัวร์
             self.driver.execute_script("arguments[0].value = arguments[1];", kw_element, keyword)
             time.sleep(0.5)
             self.driver.execute_script("arguments[0].dispatchEvent(new Event('input'));", kw_element)
@@ -630,17 +573,14 @@ class JobThaiRowScraper:
             console.print(f"   ✅ พิมพ์ '{keyword}' เรียบร้อย", style="info")
             time.sleep(1)
             
-            # 7. กดปุ่มค้นหา
             search_btn = self.driver.find_element(By.ID, "buttonsearch")
             self.driver.execute_script("arguments[0].click();", search_btn)
             console.print("   🔍 กดปุ่มค้นหาแล้ว รอผลลัพธ์...", style="dim")
             
-            # 8. รอผลลัพธ์
             WebDriverWait(self.driver, 20).until(
                 lambda d: "ResumeDetail" in d.page_source or "ไม่พบข้อมูล" in d.page_source or "No data found" in d.page_source
             )
 
-            # 9. เช็คผลลัพธ์
             if "ไม่พบข้อมูล" in self.driver.page_source or "No data found" in self.driver.page_source:
                 console.print(f"   ⚠️ ไม่พบข้อมูล (0 Results) สำหรับ: {keyword}", style="warning")
                 return True
@@ -649,24 +589,16 @@ class JobThaiRowScraper:
             return True
 
         except Exception as e:
-            # =======================================================
-            # 🚨 ERROR LOGGING SECTION (ส่วนที่เพิ่มใหม่)
-            # =======================================================
             timestamp = datetime.datetime.now().strftime("%H%M%S")
             err_img_name = f"error_search_{keyword}_{timestamp}.png"
-            
             curr_url = self.driver.current_url
             curr_title = self.driver.title
-            
             console.print(f"\n[bold red]❌ Search Error ({keyword})[/]")
             console.print(f"   📖 คำอธิบาย Error: {e}")
             console.print(f"   🔗 ลิงก์หน้าเว็บปัจจุบัน: {curr_url}")
             console.print(f"   👀 ชื่อหน้าเว็บ (Title): {curr_title}")
-            
-            # Save Screenshot
             self.driver.save_screenshot(err_img_name)
             console.print(f"   📸 บันทึกหลักฐานภาพถ่ายไว้ที่: [bold yellow]{err_img_name}[/]\n")
-            
             return False
 
     def step3_collect_all_links(self):
@@ -752,7 +684,7 @@ class JobThaiRowScraper:
         highest_degree_text = "-"; max_degree_score = -1
         degree_score_map = {"ปริญญาเอก": 3, "ดุษฎีบัณฑิต": 3, "Doctor": 3, "Ph.D": 3, "ปริญญาโท": 2, "มหาบัณฑิต": 2, "Master": 2, "ปริญญาตรี": 1, "บัณฑิต": 1, "Bachelor": 1}
         
-        def check_fuzzy(scraped_text, target_list, threshold=85): # ลด Threshold
+        def check_fuzzy(scraped_text, target_list, threshold=85): 
             if not target_list: return True
             if not scraped_text: return False
             best_score = 0
@@ -762,7 +694,7 @@ class JobThaiRowScraper:
             if best_score >= threshold: return True
             return False 
 
-        debug_edu_list = [] # เพิ่ม Debug
+        debug_edu_list = []
 
         for i in range(1, total_degrees + 1):
             base_xpath = f'//*[@id="mainTableTwoColumn"]/tbody/tr/td[1]/table/tbody/tr[7]/td[2]/table[{i}]'
@@ -791,13 +723,14 @@ class JobThaiRowScraper:
                     is_qualified = True; matched_uni = curr_uni; matched_faculty = curr_faculty; matched_major = curr_major
 
         if not is_qualified:
-            # เปิด Debug เพื่อดูว่าทำไมไม่ผ่าน (ถ้าต้องการ)
-            # printer.print(f"   ❄️ (Skip) {debug_edu_list}", style="dim")
             return None, 999, None
         
-        data['ระดับการศึกษา'] = highest_degree_text; data['มหาลัย'] = matched_uni; data['คณะ'] = matched_faculty; data['สาขา'] = matched_major
+        data['ระดับการศึกษา'] = highest_degree_text; 
+        data['มหาลัย'] = matched_uni; 
+        data['คณะ'] = matched_faculty; 
+        data['สาขา'] = matched_major
         data['รหัสใบสมัคร'] = get_val("#ResumeViewDiv [align='left'] span.white")
-        
+
         try:
             img_element = self.driver.find_element(By.ID, "DefaultPictureResume2Column")
             app_id_clean = data['รหัสใบสมัคร'].strip() if data['รหัสใบสมัคร'] else f"unknown_{int(time.time())}"
@@ -845,10 +778,12 @@ class JobThaiRowScraper:
         pos1 = get_val('//*[@id="mainTableTwoColumn"]/tbody/tr/td[1]/table/tbody/tr[5]/td[2]/table/tbody/tr[3]/td/span[2]', xpath=True)
         pos2 = get_val('//*[@id="mainTableTwoColumn"]/tbody/tr/td[1]/table/tbody/tr[5]/td[2]/table/tbody/tr[3]/td/span[4]', xpath=True)
         pos3 = get_val('//*[@id="mainTableTwoColumn"]/tbody/tr/td[1]/table/tbody/tr[5]/td[2]/table/tbody/tr[3]/td/span[6]', xpath=True)
-        data['ตำแหน่งที่ต้องการสมัคร_1'] = pos1; data['ตำแหน่งที่ต้องการสมัคร_2'] = pos2; data['ตำแหน่งที่ต้องการสมัคร_3'] = pos3
+        data['ตำแหน่งที่ต้องการสมัคร_1'] = pos1; 
+        data['ตำแหน่งที่ต้องการสมัคร_2'] = pos2; 
+        data['ตำแหน่งที่ต้องการสมัคร_3'] = pos3
         combined_positions = ", ".join([p for p in [pos1, pos2, pos3] if p])
-        data['เงินเดือนที่ต้องการ'] = get_val("//td[contains(., 'เงินเดือนที่ต้องการ')]/following-sibling::td[1]", True)
         
+        data['เงินเดือนที่ต้องการ'] = get_val("//td[contains(., 'เงินเดือนที่ต้องการ')]/following-sibling::td[1]", True)
         salary_min_txt = "-"
         salary_max_txt = "-"
         raw_salary = data.get('เงินเดือนที่ต้องการ', '')
@@ -865,11 +800,14 @@ class JobThaiRowScraper:
                     salary_min_txt = f"{int(mn):,}"
                     salary_max_txt = f"{int(mx):,}"
         except: pass
-        
+        printer.print(f"🔥 เจอ: {highest_degree_text} | มหาลัย: {matched_uni} | อัพเดท: {data.get('อัพเดทล่าสุด')}", style="bold green")
         data['Salary_Min'] = salary_min_txt
         data['Salary_Max'] = salary_max_txt
 
-        all_work_history = []
+        found_tier1_companies = set() 
+        found_tier2_companies = set()
+        found_client_companies = set() 
+        all_work_history = [] 
         try:
             if "ประวัติการทำงาน/ฝึกงาน" in full_text:
                 history_text = full_text.split("ประวัติการทำงาน/ฝึกงาน")[1].split("ความสามารถ")[0]
@@ -880,22 +818,72 @@ class JobThaiRowScraper:
             if len(raw_chunks) > 1:
                 for k in range(1, len(raw_chunks), 2):
                     if k+1 < len(raw_chunks): jobs.append(raw_chunks[k] + raw_chunks[k+1]) 
+            
             i = 0
+             
             while True:
                 check_xpath = f'//*[@id="mainTableTwoColumn"]/tbody/tr/td[2]/table/tbody/tr[2]/td[2]/table[{i+1}]'
                 try:
                     if len(self.driver.find_elements(By.XPATH, check_xpath)) == 0: break
                 except: break
+
                 suffix = f"_{i+1}"
-                company = get_val(f'{check_xpath}/tbody/tr[3]/td/div/span', True)
-                if not company: company = get_val(f'{check_xpath}/tbody/tr[3]/td', True)
+                xpath_level = f'//*[@id="mainTableTwoColumn"]/tbody/tr/td[2]/table/tbody/tr[2]/td[2]/table[{i+1}]/tbody/tr[7]/td[2]/span'
+                data[f'ระดับหน้าที่รับผิดชอบ{suffix}'] = get_val(xpath_level, xpath=True)
+                xpath_duration = f'//*[@id="mainTableTwoColumn"]/tbody/tr/td[2]/table/tbody/tr[2]/td[2]/table[{i+1}]/tbody/tr[2]/td/div'
+                duration_str = get_val(xpath_duration, xpath=True)
+                data[f'ระยะเวลาที่ทำงาน{suffix}'] = duration_str
+                data[f'รวมอายุงาน{suffix}'] = self.calculate_duration_text(duration_str)
+
+                xpath_duties_1 = f'//*[@id="mainTableTwoColumn"]/tbody/tr/td[2]/table/tbody/tr[2]/td[2]/table[{i+1}]/tbody/tr[8]/td/div/span'
+                duties_val = get_val(xpath_duties_1, xpath=True)
+                data[f'หน้าที่รับผิดชอบ{suffix}'] = duties_val
+
+                comp_xpath_specific = f'//*[@id="mainTableTwoColumn"]/tbody/tr/td[2]/table/tbody/tr[2]/td[2]/table[{i+1}]/tbody/tr[3]/td/div/span'
+                company = get_val(comp_xpath_specific, xpath=True)
+                if not company:
+                    company_xpath_2 = f'//*[@id="mainTableTwoColumn"]/tbody/tr/td[2]/table/tbody/tr[2]/td[2]/table[{i+1}]/tbody/tr[3]/td'
+                    company = get_val(company_xpath_2, xpath=True)
+                
+                position = ""; salary = ""
                 if i < len(jobs):
                     block = jobs[i]
                     if not company:
                         comp_match = re.search(r"^.*(บริษัท|Ltd|Inc|Group|Organization|หจก|Limited).*$", block, re.MULTILINE | re.IGNORECASE)
                         company = comp_match.group(0).strip() if comp_match else ""
+                        if not company:
+                             lines = [l.strip() for l in block.split('\n') if l.strip()]
+                             if len(lines) > 1: company = lines[1]
+                    pos_match = re.search(r"ตำแหน่ง\s+(.*)", block)
+                    sal_match = re.search(r"เงินเดือน\s+(.*)", block)
+                    position = pos_match.group(1).strip() if pos_match else ""
+                    salary = sal_match.group(1).strip() if sal_match else ""
+
                 data[f'ชื่อบริษัทที่เคยทำงาน{suffix}'] = company
-                if company: all_work_history.append(company.strip())
+                data[f'ตำแหน่งที่เคยเป็น{suffix}'] = position
+                data[f'เงินเดือนที่เคยได้{suffix}'] = salary
+
+                if company:
+                    clean_name = company.strip()
+                    if clean_name and clean_name not in all_work_history:
+                        all_work_history.append(clean_name)
+
+                if company:
+                    for key, keywords in CLIENTS_TARGETS.items():
+                        for kw in keywords:
+                            if fuzz.token_set_ratio(kw.lower(), company.lower()) >= 95:
+                                found_client_companies.add(key)
+                                break
+                    for key, keywords in TIER1_TARGETS.items():
+                        for kw in keywords:
+                            if fuzz.token_set_ratio(kw.lower(), company.lower()) >= 95:
+                                found_tier1_companies.add(key)
+                                break
+                    if TARGET_COMPETITORS_TIER2:
+                        for competitor in TARGET_COMPETITORS_TIER2:
+                            if fuzz.token_set_ratio(competitor.lower(), company.lower()) >= 95: 
+                                found_tier2_companies.add(competitor)
+                                break
                 i += 1
         except: pass
         
@@ -927,8 +915,141 @@ class JobThaiRowScraper:
 
         printer.print(f"   🔥 เจอ: {highest_degree_text} | มหาลัย: {matched_uni} | วันที่: {days_diff} วันก่อน", style="bold green")
         return data, days_diff, person_data
-    
-    # ... (ส่วน send_single_email, send_batch_email, save_to_google_sheets คงเดิม) ...
+
+    # --- NEW FUNCTION: Clean & Process Data with Pandas ---
+    def clean_final_data_with_pandas(self):
+        """
+        ฟังก์ชันนี้จะดึง self.all_scraped_data มาทำความสะอาดครั้งใหญ่ด้วย Pandas
+        และคืนค่ากลับไปเป็น List of List (พร้อม Header) เพื่อเตรียมลง Google Sheets
+        """
+        if not self.all_scraped_data:
+            return None
+
+        # แปลง List of Dicts เป็น DataFrame
+        df = pd.DataFrame(self.all_scraped_data)
+        
+        # --- CLEANING FUNCTIONS (Inner Functions) ---
+        def clean_salary_split(val):
+            if pd.isna(val) or str(val).strip() == '' or 'ปิดข้อมูล' in str(val): return None, None
+            s = str(val).lower().replace(',', '')
+            def repl(m):
+                try: return str(float(m.group(1)) * 1000)
+                except: return m.group(0)
+            s = re.sub(r'(\d+(\.\d+)?)\s*k', repl, s)
+            nums = re.findall(r'\d+(?:\.\d+)?', s)
+            nums = [float(n) for n in nums]
+            if not nums: return None, None
+            mn, mx = nums[0], nums[0]
+            if len(nums) >= 2: mn, mx = nums[0], nums[1]
+            if mx > 1000 and mn < 1000 and mn > 0:
+                if mx / mn > 100: mn *= 1000
+            return int(mn), int(mx)
+
+        def clean_salary_single(val):
+            mn, mx = clean_salary_split(val)
+            if mn is None: return ""
+            if mn != mx: return int((mn + mx) / 2)
+            return int(mn)
+
+        def clean_location(val):
+            if pd.isna(val) or 'ปิดข้อมูล' in str(val): return '', ''
+            s = str(val).strip()
+            m = re.search(r'(\d{5})$', s)
+            if m:
+                zipc = m.group(1)
+                prov = s.replace(zipc, '').strip()
+                return prov, zipc
+            return s, ''
+
+        def clean_address_split(val):
+            if pd.isna(val) or 'ปิดข้อมูล' in str(val): return None, None
+            val = str(val).replace('จ.', 'จังหวัด').replace('อ.', 'อำเภอ').replace('ต.', 'ตำบล')
+            sub_district = None; district = None
+            m_sub = re.search(r'(แขวง|ตำบล)\s*([ก-๙]+)', val)
+            if m_sub: sub_district = m_sub.group(2)
+            m_dist = re.search(r'(เขต|อำเภอ)\s*([ก-๙]+)', val)
+            if m_dist: district = m_dist.group(2)
+            return district, sub_district
+
+        def clean_phone(val):
+            if pd.isna(val) or 'Click' in str(val): return ''
+            clean_number = re.sub(r'\D', '', str(val))
+            if clean_number: return f"'{clean_number}" 
+            return ''
+        
+        def clean_email(val):
+            if pd.isna(val) or 'Click' in str(val): return ''
+            return str(val).strip()
+
+        def clean_company_name(val):
+            if pd.isna(val): return ""
+            s = str(val).strip()
+            # ลบ space ระหว่างตัวอักษรไทย (เช่น "บ ริ ษั ท")
+            s = re.sub(r'(?<=[\u0E00-\u0E7F])\s+(?=[\u0E00-\u0E7F])', '', s)
+            return s
+
+        # --- APPLY CLEANING ---
+        if 'เงินเดือนที่ต้องการ' in df.columns:
+            salary_split = df['เงินเดือนที่ต้องการ'].apply(lambda x: pd.Series(clean_salary_split(x)))
+            df['เงินเดือนที่ต้องการ_Min'] = salary_split[0]
+            df['เงินเดือนที่ต้องการ_Max'] = salary_split[1]
+
+        history_salary_cols = [c for c in df.columns if 'เงินเดือนที่เคยได้' in c]
+        for c in history_salary_cols:
+            df[c] = df[c].apply(clean_salary_single)
+
+        if 'จังหวัดที่อยู่' in df.columns:
+            loc_split = df['จังหวัดที่อยู่'].apply(lambda x: pd.Series(clean_location(x)))
+            df['จังหวัดที่อยู่'] = loc_split[0]
+            df['รหัสไปรษณีย์'] = loc_split[1]
+
+        if 'ที่อยู่' in df.columns:
+            addr_split = df['ที่อยู่'].apply(lambda x: pd.Series(clean_address_split(x)))
+            df['เขต'] = addr_split[0]
+            df['แขวง'] = addr_split[1]
+
+        if 'เบอร์โทร' in df.columns: df['เบอร์โทร'] = df['เบอร์โทร'].apply(clean_phone)
+        if 'Email' in df.columns: df['Email'] = df['Email'].apply(clean_email)
+
+        company_cols = [c for c in df.columns if 'ชื่อบริษัทที่เคยทำงาน' in c]
+        for c in company_cols:
+            df[c] = df[c].apply(clean_company_name)
+
+        # --- REORDER COLUMNS ---
+        base_columns = [
+            "Link", "Keyword", "รหัสใบสมัคร", "เคยทำบริษัทคู่แข่ง", "รูปภาพ", 
+            "อัพเดทล่าสุด", 
+            "ชื่อ", "นามสกุล", "อายุ", "เพศ", 
+            "เบอร์โทร", "Email", "ที่อยู่", "แขวง", "เขต", "จังหวัดที่อยู่", "รหัสไปรษณีย์",
+            "ตำแหน่งที่ต้องการสมัคร_1","ตำแหน่งที่ต้องการสมัคร_2","ตำแหน่งที่ต้องการสมัคร_3", 
+            "เงินเดือนที่ต้องการ", "เงินเดือนที่ต้องการ_Min", "เงินเดือนที่ต้องการ_Max", 
+            "ระดับการศึกษา", "มหาลัย", "คณะ", "สาขา"
+        ]
+        
+        cols_to_keep = [c for c in base_columns if c in df.columns]
+        other_cols = [c for c in df.columns if c not in base_columns]
+        work_cols = []
+        for col in other_cols:
+            if any(k in col for k in ["ชื่อบริษัทที่เคยทำงาน", "ตำแหน่งที่เคยเป็น", "เงินเดือนที่เคยได้", "ระดับหน้าที่รับผิดชอบ", "ระยะเวลาที่ทำงาน", "หน้าที่รับผิดชอบ", "รวมอายุงาน"]):
+                work_cols.append(col)
+        
+        # เรียง work_cols ตามเลขท้าย (เช่น _1, _2, _3)
+        work_cols.sort(key=lambda x: int(re.search(r'_(\d+)$', x).group(1)) if re.search(r'_(\d+)$', x) else 0)
+        
+        final_cols = cols_to_keep + work_cols + ["ประสบการณ์ทำงานรวมทั้งหมด", "Analyzed_Department", "Analyzed_Score", "Analyzed_Breakdown"]
+        final_cols = [c for c in final_cols if c in df.columns]
+        
+        df = df[final_cols]
+        
+        # --- PREPARE FOR GOOGLE SHEETS ---
+        # 1. แทนค่า NaN ด้วย "" (เพื่อให้ Sheets ไม่ Error)
+        df = df.fillna("")
+        
+        # 2. แปลงเป็น List of Lists [ [Header], [Row1], [Row2], ... ]
+        data_for_sheets = [df.columns.values.tolist()] + df.values.tolist()
+        
+        return data_for_sheets
+
     def send_single_email(self, subject_prefix, people_list, col_header="เคยทำงานบริษัท"):
         sender = os.getenv("EMAIL_SENDER")
         password = os.getenv("EMAIL_PASSWORD")
@@ -1051,12 +1172,16 @@ class JobThaiRowScraper:
         self.send_single_email(f"สรุปผู้สมัครรายสัปดาห์: {keyword} ({len(batch_candidates)} คน)", batch_candidates)
 
     def save_to_google_sheets(self):
-        if not self.all_scraped_data:
-            console.print("⚠️ ไม่มีข้อมูลใหม่ให้บันทึก", style="yellow")
+        console.rule("[bold green]📊 Google Sheets Update (Smart Append Mode)[/]")
+        
+        # 1. เตรียมข้อมูลใหม่ที่ Clean แล้ว
+        console.print("🧹 กำลังทำความสะอาดข้อมูลและจัดเรียงคอลัมน์...", style="cyan")
+        final_data_list = self.clean_final_data_with_pandas()
+        
+        if not final_data_list:
+            console.print("⚠️ ไม่มีข้อมูลใหม่จากการสแกนรอบนี้", style="yellow")
             return
 
-        console.rule("[bold green]📊 เริ่มต้นการอัพโหลดขึ้น Google Sheets[/]")
-        
         try:
             if not G_SHEET_KEY_JSON or not G_SHEET_NAME:
                 console.print("❌ ไม่พบ Key หรือชื่อไฟล์ Google Sheet ใน Secrets", style="error")
@@ -1071,49 +1196,56 @@ class JobThaiRowScraper:
             console.print(f"✅ เชื่อมต่อไฟล์ '{G_SHEET_NAME}' สำเร็จ", style="success")
             
             today_str = datetime.datetime.now().strftime("%d-%m-%Y")
+            worksheet = None
+            
+            # 2. พยายามเข้าถึง Tab ของวันนี้
             try:
                 worksheet = sheet.worksheet(today_str)
-                console.print(f"ℹ️ พบ Tab '{today_str}' อยู่แล้ว -> จะทำการต่อท้ายข้อมูล (Append)", style="info")
+                console.print(f"ℹ️ พบ Tab '{today_str}' แล้ว -> กำลังตรวจสอบข้อมูลซ้ำ...", style="info")
             except:
-                worksheet = sheet.add_worksheet(title=today_str, rows="100", cols="20")
+                # ถ้ายังไม่มี Tab วันนี้ ให้สร้างใหม่
+                worksheet = sheet.add_worksheet(title=today_str, rows="100", cols="30")
                 console.print(f"🆕 สร้าง Tab ใหม่: '{today_str}'", style="success")
-                
-                headers = [
-                    "Link", "Keyword", "รหัสใบสมัคร", "ชื่อ-นามสกุล", "อายุ", "เพศ", 
-                    "เบอร์โทร", "Email", "ที่อยู่", "ระดับการศึกษา", "มหาลัย", "คณะ", "สาขา",
-                    "ตำแหน่งที่สมัคร", "เงินเดือนที่ขอ (Raw)", "เงินเดือนต่ำสุด", "เงินเดือนสูงสุด",
-                    "เคยทำบริษัทคู่แข่ง", "อัพเดทล่าสุด"
-                ]
-                worksheet.append_row(headers)
-
-            data_rows = []
-            for item in self.all_scraped_data:
-                row = [
-                    item.get('Link', ''),
-                    item.get('Keyword', ''),
-                    item.get('รหัสใบสมัคร', ''),
-                    f"{item.get('ชื่อ','')} {item.get('นามสกุล','')}",
-                    item.get('อายุ', ''),
-                    item.get('เพศ', ''),
-                    re.sub(r'\D', '', str(item.get('เบอร์โทร', ''))),
-                    str(item.get('Email', '')).replace('Click', '').strip(),
-                    item.get('จังหวัดที่อยู่', ''),
-                    item.get('ระดับการศึกษา', ''),
-                    item.get('มหาลัย', ''),
-                    item.get('คณะ', ''),
-                    item.get('สาขา', ''),
-                    f"{item.get('ตำแหน่งที่ต้องการสมัคร_1','')} {item.get('ตำแหน่งที่ต้องการสมัคร_2','')}",
-                    item.get('เงินเดือนที่ต้องการ', ''),
-                    item.get('Salary_Min', '-'), 
-                    item.get('Salary_Max', '-'), 
-                    item.get('เคยทำบริษัทคู่แข่ง', ''),
-                    item.get('อัพเดทล่าสุด', '')
-                ]
-                data_rows.append(row)
             
-            if data_rows:
-                worksheet.append_rows(data_rows)
-                console.print(f"✅ บันทึกข้อมูล {len(data_rows)} แถว เรียบร้อย!", style="bold green")
+            # 3. ดึงข้อมูลเก่าที่มีอยู่ใน Sheet มาเช็ค (เพื่อกันซ้ำ)
+            existing_data = worksheet.get_all_values()
+            
+            if not existing_data:
+                # กรณี A: Tab ว่างเปล่า (เพิ่งสร้าง) -> ใส่ข้อมูลลงไปเลยทั้งก้อน (Header + Data)
+                worksheet.update(final_data_list)
+                console.print(f"✅ บันทึกข้อมูลใหม่ทั้งหมด {len(final_data_list)-1} รายการ", style="bold green")
+            else:
+                # กรณี B: มีข้อมูลอยู่แล้ว -> ต้องเช็คซ้ำก่อน Append
+                
+                # หา Index ของคอลัมน์ "รหัสใบสมัคร" เพื่อใช้เป็น Key ในการเช็ค
+                header_row = final_data_list[0] # Header ของข้อมูลใหม่
+                try:
+                    # สมมติว่า Header ของเก่ากับของใหม่ตรงกัน (เพราะมาจาก Logic เดียวกัน)
+                    id_index = header_row.index("รหัสใบสมัคร")
+                except ValueError:
+                    id_index = 0 # ถ้าหาไม่เจอ ให้ใช้คอลัมน์แรก (Link) แทน
+                
+                # สร้าง Set ของ ID เก่าที่มีอยู่แล้ว (เพื่อความเร็วในการค้นหา)
+                existing_ids = set()
+                for row in existing_data[1:]: # ข้าม Header แถวแรก
+                    if len(row) > id_index:
+                        existing_ids.add(row[id_index])
+                
+                # คัดแยกเฉพาะข้อมูลใหม่ที่ไม่ซ้ำ ID เดิม
+                new_rows_to_add = []
+                for row in final_data_list[1:]: # ข้าม Header ข้อมูลใหม่
+                    candidate_id = row[id_index]
+                    
+                    if candidate_id not in existing_ids:
+                        new_rows_to_add.append(row)
+                        existing_ids.add(candidate_id) # กันเหนียว: ถ้าในรอบนี้มี ID ซ้ำกันเอง ก็จะเข้าแค่ครั้งเดียว
+                
+                # 4. บันทึกเฉพาะส่วนต่าง (Append)
+                if new_rows_to_add:
+                    worksheet.append_rows(new_rows_to_add)
+                    console.print(f"✅ เพิ่มข้อมูลใหม่ {len(new_rows_to_add)} รายการ (จากที่เจอ {len(final_data_list)-1})", style="bold green")
+                else:
+                    console.print("✨ ข้อมูลทั้งหมดมีอยู่ใน Sheet แล้ว (ไม่มีรายการใหม่)", style="yellow")
                 
         except Exception as e:
             console.print(f"❌ Google Sheets Error: {e}", style="error")
@@ -1126,7 +1258,7 @@ class JobThaiRowScraper:
         is_friday = (today.weekday() == 4)
         is_manual_run = (os.getenv("GITHUB_EVENT_NAME") == "workflow_dispatch")
         
-        console.print(f"📅 Status Check: Today is Monday? [{'Yes' if is_monday else 'No'}] | Manual Run? [{'Yes' if is_manual_run else 'No'}]", style="bold yellow")
+        console.print(f"📅 Status Check: Today is Monday? [{'Yes' if today.weekday()==0 else 'No'}] | Manual Run? [{'Yes' if is_manual_run else 'No'}]", style="bold yellow")
         
         master_data_list = [] 
         
@@ -1166,14 +1298,14 @@ class JobThaiRowScraper:
                                                 last_notify = datetime.datetime.strptime(self.history_data[person_data['id']], "%Y-%m-%d").date()
                                                 if (today - last_notify).days < 7: should_add = False
                                             except: pass
-                                        if should_add: current_keyword_batch.append(person_data)
+                                    if should_add: current_keyword_batch.append(person_data)
 
                                     if days_diff <= 1:
                                         should_hot = True
                                         if EMAIL_USE_HISTORY and person_data['id'] in self.history_data:
                                              try:
-                                                 last_notify = datetime.datetime.strptime(self.history_data[person_data['id']], "%Y-%m-%d").date()
-                                                 if (today - last_notify).days < 1: should_hot = False
+                                                  last_notify = datetime.datetime.strptime(self.history_data[person_data['id']], "%Y-%m-%d").date()
+                                                  if (today - last_notify).days < 1: should_hot = False
                                              except: pass
                                         if should_hot:
                                             hot_subject = f"🔥 [HOT] พบผู้สมัครด่วน ({keyword}): {person_data['name']}"
@@ -1182,12 +1314,12 @@ class JobThaiRowScraper:
                                             if EMAIL_USE_HISTORY: self.history_data[person_data['id']] = str(today)
 
                                     if days_diff > 30 and (is_friday or is_manual_run):
-                                        if current_keyword_batch:
-                                             progress.console.print(f"\n[bold green]📨 เจอคนเก่า ({days_diff} วัน) -> ถึงรอบส่งเมลสรุป ({len(current_keyword_batch)} คน)![/]")
-                                             self.send_batch_email(current_keyword_batch, keyword)
-                                             if EMAIL_USE_HISTORY:
-                                                 for p in current_keyword_batch: self.history_data[p['id']] = str(today)
-                                             current_keyword_batch = []
+                                         if current_keyword_batch:
+                                              progress.console.print(f"\n[bold green]📨 เจอคนเก่า ({days_diff} วัน) -> ถึงรอบส่งเมลสรุป ({len(current_keyword_batch)} คน)![/]")
+                                              self.send_batch_email(current_keyword_batch, keyword)
+                                              if EMAIL_USE_HISTORY:
+                                                   for p in current_keyword_batch: self.history_data[p['id']] = str(today)
+                                              current_keyword_batch = []
 
                             except Exception as e: progress.console.print(f"[bold red]❌ Error Link {i+1}: {e}[/]")
                             progress.advance(task_id)
