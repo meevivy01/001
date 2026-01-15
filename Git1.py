@@ -1150,7 +1150,7 @@ class JobThaiRowScraper:
         
         return data_for_sheets
 
-    def send_single_email(self, subject_prefix, people_list, col_header="เคยทำงานบริษัท"):
+    def send_single_email(self, subject_prefix, people_list, col_header="ประวัติบริษัท"):
         sender = os.getenv("EMAIL_SENDER")
         password = os.getenv("EMAIL_PASSWORD")
         receiver_list = []
@@ -1165,92 +1165,112 @@ class JobThaiRowScraper:
         elif len(people_list) > 1: subject = f"🔥 {subject_prefix} ({len(people_list)} คน)"
         else: subject = subject_prefix 
 
-        # 🟢 1. [แก้ไข] ลบ <th>วันที่เคยเจอ</th> ออกแล้ว
+        # CSS: ปรับให้ตารางดูสะอาดตาและรองรับตัวหนา
         body_html = f"""
         <html>
         <head>
         <style>
-            table {{ border-collapse: collapse; width: 100%; font-size: 14px; }}
-            th, td {{ border: 1px solid #ddd; padding: 8px; text-align: left; }}
+            table {{ border-collapse: collapse; width: 100%; font-size: 14px; font-family: 'Sarabun', sans-serif; }}
+            th, td {{ border: 1px solid #ddd; padding: 8px; text-align: left; vertical-align: top; }}
             th {{ background-color: #f2f2f2; }}
             tr:nth-child(even) {{ background-color: #f9f9f9; }}
             .btn {{
-                background-color: #28a745; 
-                color: #ffffff !important; 
-                padding: 5px 10px;
-                text-align: center; 
-                text-decoration: none; 
-                display: inline-block;
-                border-radius: 4px; 
-                font-size: 12px;
-                font-weight: bold;
+                background-color: #28a745; color: #ffffff !important; padding: 5px 10px;
+                text-align: center; text-decoration: none; display: inline-block;
+                border-radius: 4px; font-size: 12px; font-weight: bold;
             }}
-            .btn:hover, .btn:visited, .btn:active {{ color: #ffffff !important; }}
+            .highlight {{ color: #d9534f; font-weight: bold; }} /* สีแดงเลือดหมูตัวหนา สำหรับเป้าหมาย */
         </style>
         </head>
         <body>
             <h3>{subject}</h3>
             <table>
                 <tr>
-                    <th style="width: 10%;">รูปภาพ</th>
-                    <th style="width: 15%;">{col_header}</th>
-                    <th style="width: 10%;">ระดับการศึกษาสูงสุด</th>
+                    <th style="width: 8%;">รูปภาพ</th>
+                    <th style="width: 22%;">{col_header}</th> <th style="width: 10%;">ระดับการศึกษา</th>
                     <th style="width: 10%;">รหัสใบสมัคร</th>
                     <th style="width: 15%;">ชื่อ-นามสกุล</th>
                     <th style="width: 5%;">อายุ</th>
                     <th style="width: 15%;">ตำแหน่งที่สมัคร</th>
-                    <th style="width: 8%;">เงินเดือนขั้นต่ำ</th> <th style="width: 8%;">เงินเดือนสูงสุด</th> <th style="width: 10%;">อัพเดทล่าสุด</th>
-                    <th style="width: 10%;">ลิงก์</th>
+                    <th style="width: 8%;">เงินเดือน (Min-Max)</th> 
+                    <th style="width: 10%;">อัพเดทล่าสุด</th>
+                    <th style="width: 7%;">ลิงก์</th>
                 </tr>
         """
         
         images_to_attach = []
-        # เตรียมตัวแปรสำหรับ Footer (ดึงจากคนแรกในลิสต์)
-        footer_last_seen = "-"
         
         for person in people_list:
-            # เก็บค่า last_seen_date ไว้ใช้ที่ Footer (ถ้ามีหลายคนจะเอาของคนล่าสุดที่วนลูป แต่ปกติอีเมล HOT มีคนเดียว)
-            if person.get('last_seen_date') and person.get('last_seen_date') != "-":
-                footer_last_seen = person.get('last_seen_date')
-
             cid_id = f"img_{person['id']}"
             if person['image_path'] and os.path.exists(person['image_path']):
-                img_html = f'<img src="cid:{cid_id}" width="80" style="border-radius: 5px;">'
+                img_html = f'<img src="cid:{cid_id}" width="70" style="border-radius: 5px;">'
                 images_to_attach.append({'cid': cid_id, 'path': person['image_path']})
             else:
-                img_html = '<span style="color:gray;">No Image</span>'
+                img_html = '<span style="color:gray; font-size:12px;">No Image</span>'
 
-            company_display = person['company']
-            if company_display == "University Target" or company_display == "-":
-                company_display = "-"
-                company_style = "font-weight: bold;" 
-            else:
-                company_style = "font-weight: normal;"
+            # --- 🔥 ส่วน Logic การทำตัวหนาเฉพาะบริษัทเป้าหมาย ---
+            raw_companies = person['company']
+            final_company_html = "-"
+            
+            if raw_companies and raw_companies != "-":
+                comp_list = raw_companies.split(", ")
+                formatted_list = []
+                
+                for comp in comp_list:
+                    is_target = False
+                    comp_clean = comp.strip()
+                    
+                    # 1. เช็ค Tier 1
+                    for key, keywords in TIER1_TARGETS.items():
+                        for kw in keywords:
+                            if fuzz.token_set_ratio(kw.lower(), comp_clean.lower()) >= 85:
+                                is_target = True; break
+                        if is_target: break
+                    
+                    # 2. เช็ค Clients (ถ้ายังไม่ใช่ Tier 1)
+                    if not is_target:
+                        for key, keywords in CLIENTS_TARGETS.items():
+                            for kw in keywords:
+                                if fuzz.token_set_ratio(kw.lower(), comp_clean.lower()) >= 85:
+                                    is_target = True; break
+                            if is_target: break
+                            
+                    # 3. เช็ค Tier 2
+                    if not is_target and TARGET_COMPETITORS_TIER2:
+                        for kw in TARGET_COMPETITORS_TIER2:
+                            if fuzz.token_set_ratio(kw.lower(), comp_clean.lower()) >= 85:
+                                is_target = True; break
 
-            # 🟢 2. [แก้ไข] ลบ <td>{prev_date}</td> ออกจากบรรทัดนี้
+                    # ถ้าใช่เป้าหมาย ให้ใส่ tag <b> และสี
+                    if is_target:
+                        formatted_list.append(f"<span class='highlight'>{comp_clean}</span>")
+                    else:
+                        formatted_list.append(comp_clean)
+                
+                # แสดงผลแบบรายการ (List) คั่นด้วย <br>
+                final_company_html = "<br>".join(formatted_list)
+
+            # จัดการเงินเดือน (รวม Min-Max ในช่องเดียว)
+            salary_show = f"{person.get('salary_min', '-')} - {person.get('salary_max', '-')}"
+
             body_html += f"""
                 <tr>
                     <td style="text-align: center;">{img_html}</td>
-                    <td style="{company_style}">{company_display}</td>
+                    <td style="font-size: 13px; line-height: 1.6;">{final_company_html}</td>
                     <td>{person.get('degree', '-')}</td> 
                     <td>{person['id']}</td>
                     <td>{person['name']}</td>
                     <td>{person['age']}</td>
                     <td>{person['positions']}</td>
-                    <td>{person.get('salary_min', '-')}</td> <td>{person.get('salary_max', '-')}</td> <td>{person['last_update']}</td>
+                    <td>{salary_show}</td> 
+                    <td>{person['last_update']}</td>
                     <td style="text-align: center;">
-                        <a href="{person['link']}" target="_blank" class="btn" style="color: #ffffff; text-decoration: none;">เปิดดู</a>
+                        <a href="{person['link']}" target="_blank" class="btn">เปิดดู</a>
                     </td>
                 </tr>
             """
-        
-        # จัดรูปแบบข้อความ Footer
-        footer_text = f"ประวัติการเจอ: {footer_last_seen}"
-        if footer_last_seen == "-":
-            footer_text = "ประวัติการเจอ: ไม่เคยเจอมาก่อน (New)"
-
-        # 🟢 3. [แก้ไข] เปลี่ยนข้อความท้ายอีเมล เป็นตัวแปร footer_text
-        body_html += f"</table><br><p style='color: #666; font-size: 12px;'><i>{footer_text}</i></p></body></html>"
+            
+        body_html += "</table><br><p style='color:#777; font-size:12px;'><i>* รายชื่อสีแดงเข้ม คือบริษัทที่อยู่ใน Target List</i></p></body></html>"
 
         try:
             server = smtplib.SMTP('smtp.gmail.com', 587)
