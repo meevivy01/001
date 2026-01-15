@@ -290,11 +290,11 @@ class JobThaiRowScraper:
         max_retries = 3
 
         for attempt in range(1, max_retries + 1):
-            console.rule(f"[bold cyan]🔐 Login Attempt {attempt}/{max_retries} (Target ID: login_company)[/]")
+            console.rule(f"[bold cyan]🔐 Login Attempt {attempt}/{max_retries} (Specific Manual Flow)[/]")
             
             try:
                 # ==============================================================================
-                # 🛑 Helper: ฟังก์ชันกำจัดสิ่งกีดขวาง
+                # 🛑 Helper: ฟังก์ชันกำจัดสิ่งกีดขวาง (เรียกใช้ตลอดเวลา)
                 # ==============================================================================
                 def kill_blockers():
                     try:
@@ -311,7 +311,7 @@ class JobThaiRowScraper:
                     self.driver.get(start_url)
                     self.wait_for_page_load()
                     self.random_sleep(3, 4)
-                    kill_blockers()
+                    kill_blockers() # เคลียร์ทางครั้งที่ 1
                     console.print(f"      ✅ เข้าหน้าเว็บสำเร็จ (Title: {self.driver.title})", style="green")
                 except Exception as e:
                     raise Exception(f"เข้าเว็บไม่สำเร็จ: {e}")
@@ -323,22 +323,33 @@ class JobThaiRowScraper:
                 
                 link_found = False
                 actions = ActionChains(self.driver)
+                
+                # คลิก Body เพื่อ Reset Focus
                 self.driver.find_element(By.TAG_NAME, 'body').click()
                 
+                # วนลูปกด Tab สูงสุด 150 ครั้ง
                 for i in range(150):
-                    kill_blockers()
+                    kill_blockers() # เคลียร์ทางระหว่างกด
                     actions.send_keys(Keys.TAB).perform()
+                    
+                    # เช็คว่า Focus อยู่ที่ไหน
                     active_href = self.driver.execute_script("return document.activeElement.href;")
                     
+                    # ถ้าเจอลิงก์เป้าหมาย
                     if active_href and target_login_link in str(active_href):
                         console.print(f"      ✅ เจอปุ่มเป้าหมายแล้ว! (กด Tab ครั้งที่ {i+1})", style="bold green")
+                        console.print(f"      🔗 Link: {active_href}", style="dim")
+                        
+                        # กด Enter
                         actions.send_keys(Keys.ENTER).perform()
                         link_found = True
-                        time.sleep(3)
+                        time.sleep(3) # รอ Modal เด้ง
                         break
-                    time.sleep(0.05)
+                    
+                    time.sleep(0.05) # กดเร็วๆ
 
                 if not link_found:
+                    # ถ้าไม่เจอ ลองใช้ JS กดตรงๆ (Fallback)
                     console.print("      ⚠️ กด Tab ไม่เจอ (จะลองใช้ JS กดแทน)", style="yellow")
                     found_by_js = self.driver.execute_script(f"""
                         var links = document.querySelectorAll('a');
@@ -359,6 +370,7 @@ class JobThaiRowScraper:
                 console.print("   3️⃣  กำลังหาปุ่ม 'หาคน' (Employer Tab)...", style="dim")
                 kill_blockers()
                 
+                # รอให้ Modal เด้ง
                 try:
                     WebDriverWait(self.driver, 10).until(
                         EC.visibility_of_element_located((By.XPATH, "//*[@id='login_tab_employer']"))
@@ -367,16 +379,19 @@ class JobThaiRowScraper:
                     console.print("      ⚠️ ไม่เห็นปุ่ม ID login_tab_employer (อาจโดนบัง หรือ Modal ไม่มา)", style="red")
 
                 clicked_tab = False
+                # รายชื่อ Selector ที่เป็นไปได้ทั้งหมดตามคำสั่ง
                 employer_selectors = [
-                    (By.XPATH, "//*[@id='login_tab_employer']"),
-                    (By.XPATH, "//span[contains(text(), 'หาคน')]"),
-                    (By.CSS_SELECTOR, "div#login_tab_employer")
+                    (By.XPATH, "//*[@id='login_tab_employer']"), # ตามคำสั่ง
+                    (By.XPATH, "//span[contains(text(), 'หาคน')]"), # ตามคำ "หาคน"
+                    (By.CSS_SELECTOR, "div#login_tab_employer"), # CSS ID
+                    (By.CLASS_NAME, "login__Tab-sc-1vw2cmp-10") # Class
                 ]
 
                 for by, val in employer_selectors:
                     try:
                         elem = self.driver.find_element(by, val)
                         if elem.is_displayed():
+                            # ใช้ JS Click เพื่อความชัวร์ (เพราะ SVG อาจบัง)
                             self.driver.execute_script("arguments[0].click();", elem)
                             clicked_tab = True
                             console.print(f"      ✅ กดปุ่ม 'หาคน' สำเร็จ (ด้วย Selector: {val})", style="bold green")
@@ -465,7 +480,7 @@ class JobThaiRowScraper:
                         console.print("      ⚠️ กรอกเสร็จแต่หาปุ่มกดไม่เจอ -> ลองกด Enter", style="yellow")
                         ActionChains(self.driver).send_keys(Keys.ENTER).perform()
                 else:
-                    raise Exception("หาช่อง Input ไม่เจอ")
+                    raise Exception("หาช่อง Input ไม่เจอ (Script ทำงานไม่สมบูรณ์)")
 
                 # ==============================================================================
                 # 5️⃣ STEP 5: ตรวจสอบผลลัพธ์ (แก้ Bug False Positive)
@@ -505,9 +520,20 @@ class JobThaiRowScraper:
                     console.print(f"      💬 Alert: [white on red]{error_msg}[/]")
                     raise Exception(f"Login Failed - Stuck at {curr_url}")
 
+            except Exception as e:
+                # ❌ LOGGING เมื่อพัง
+                console.print(f"\n[bold red]❌ ขั้นตอนล้มเหลว![/]")
+                console.print(f"   สาเหตุ: {e}")
+                console.print(f"   URL ปัจจุบัน: {self.driver.current_url}")
+                
+                # แนบลิงค์ภาพ Error
+                timestamp = datetime.datetime.now().strftime("%H%M%S")
+                err_img = f"error_step1_{timestamp}.png"
+                self.driver.save_screenshot(err_img)
+                console.print(f"   📸 ดูภาพหลักฐานได้ที่: [yellow]{err_img}[/]\n")
+
         console.print("🚫 หมดความพยายาม -> ใช้ Cookie สำรอง", style="bold red")
         return self.login_with_cookie()
-
     def login_with_cookie(self):
         cookies_env = os.getenv("COOKIES_JSON")
         if not cookies_env: 
