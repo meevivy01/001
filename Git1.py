@@ -337,67 +337,46 @@ class JobThaiRowScraper:
             return ""
         except: return ""
 
+    # ==============================================================================
+    # 🔥 STEP 1: LOGIN (Dynamic URL Handling)
+    # ==============================================================================
     def step1_login(self):
-        # 1. เข้าลิงค์เริ่มต้น (หน้าหางาน)
-        start_url = "https://www.jobthai.com"
-        # 2. ลิงค์เป้าหมายที่จะกด Tab หา
-        target_login_link = "https://www.jobthai.com/login?page=resumes&l=th"
+        # 1. เริ่มจากลิงก์สั้น (EntryPoint) เพื่อให้ Server สร้างรหัสสุ่มให้เรา
+        entry_point = "https://www.jobthai.com/login?page=resumes&l=th"
         
-        max_retries = 3
-
-        for attempt in range(1, max_retries + 1):
-            console.rule(f"[bold cyan]🔐 Login Attempt {attempt}/{max_retries} (Target: #login_company)[/]")
+        console.rule(f"[bold cyan]🔐 Login Process (Auto-Append Type)[/]")
+        
+        try:
+            # ==============================================================================
+            # 2️⃣ STEP 2: เข้าหน้าเว็บ & เติม Parameter เอง
+            # ==============================================================================
+            console.print(f"   2️⃣  เริ่มเข้าสู่ระบบจาก: [yellow]{entry_point}[/]", style="dim")
             
-            try:
-                # ==============================================================================
-                # 🛑 Helper: ฟังก์ชันกำจัดสิ่งกีดขวาง
-                # ==============================================================================
-                def kill_blockers():
-                    try:
-                        self.driver.execute_script("""
-                            document.querySelectorAll('#close-button, .cookie-consent, [class*="pdpa"], [class*="popup"], .modal-backdrop, iframe').forEach(b => b.remove());
-                        """)
-                    except: pass
-
-                # ==============================================================================
-                # 1️⃣ STEP 1: เข้าสู่หน้าเว็บไซต์
-                # ==============================================================================
-                console.print("   1️⃣  กำลังเข้าสู่หน้า: [yellow]jobthai.com/หางาน[/]...", style="dim")
-                try:
-                    self.driver.get(start_url)
-                    self.wait_for_page_load()
-                    self.random_sleep(3, 4)
-                    kill_blockers()
-                    console.print(f"      ✅ เข้าหน้าเว็บสำเร็จ (Title: {self.driver.title})", style="green")
-                except Exception as e:
-                    raise Exception(f"เข้าเว็บไม่สำเร็จ: {e}")
-
-                # ==============================================================================
-                # 2️⃣ STEP 2: เข้าสู่หน้า Employer (Direct Link Strategy)
-                # ==============================================================================
-                # 🛑 เป้าหมายที่ถูกต้อง
-                target_login_link = "https://www.jobthai.com/login?page=resumes&l=th"
+            # 1. เข้าลิงก์เริ่มต้น
+            self.driver.get(entry_point)
+            
+            # 2. รอให้ Server สร้างรหัสสุ่ม และพาเราไปหน้า Auth
+            console.print("      ⏳ รอ JobThai สร้าง Session ID...", style="dim")
+            WebDriverWait(self.driver, 15).until(EC.url_contains("auth.jobthai.com"))
+            
+            # 3. 🛑 KEY FIX: จับ URL ปัจจุบัน (ที่มีรหัสถูกต้อง) มาเติม &type=resume
+            current_url = self.driver.current_url
+            
+            if "type=resume" not in current_url:
+                console.print(f"      ⚠️ URL ขาด type=resume (กำลังเติมให้...)", style="yellow")
                 
-                console.print(f"   2️⃣  กำลังวาร์ปไปหน้า Employer: [yellow]{target_login_link}[/]...", style="dim")
+                # เช็คว่าต้องเชื่อมด้วย ? หรือ &
+                separator = "&" if "?" in current_url else "?"
+                fixed_url = current_url + separator + "type=resume"
                 
-                # ใช้วิธี "ก็อปวางลิงค์" (Direct Navigation)
-                # ไม่ต้องหาปุ่ม ไม่ต้องคลิก พุ่งไปเลย ชัวร์สุด
-                try:
-                    self.driver.get(target_login_link)
-                    self.wait_for_page_load()
-                    
-                    # รอให้หน้าเว็บโหลดและ Redirect ให้เสร็จ
-                    console.print("      ⏳ รอหน้าเว็บโหลด...", style="dim")
-                    time.sleep(3) 
-                    
-                    # ตรวจสอบว่ามาถูกหน้าไหม
-                    if "employer" in self.driver.current_url:
-                        console.print("      ✅ เข้าสู่หน้า Employer เรียบร้อย", style="bold green")
-                    else:
-                        console.print(f"      ⚠️ URL ดูแปลกๆ ({self.driver.current_url}) แต่จะลองไปต่อ...", style="yellow")
-                        
-                except Exception as e:
-                    raise Exception(f"เข้าลิงก์ {target_login_link} ไม่สำเร็จ: {e}")
+                console.print(f"      🔄 Reload ด้วย URL ที่สมบูรณ์...", style="bold cyan")
+                self.driver.get(fixed_url)
+                self.wait_for_page_load()
+                time.sleep(3)
+                
+                console.print(f"      ✅ URL พร้อมใช้งาน: {self.driver.current_url}", style="green")
+            else:
+                console.print(f"      ✅ URL สมบูรณ์แล้ว (Server ส่งมาให้ครบ)", style="green")
 
                 # ==============================================================================
                 # 3️⃣ STEP 3: กดเลือก "หาคน" (Employer Tab)
