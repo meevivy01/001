@@ -409,7 +409,7 @@ class JobThaiRowScraper:
                     if not found_by_js:
                         raise Exception(f"หาลิงก์ {target_login_link} ไม่เจอทั้ง Tab และ JS")
 
-                 # ==============================================================================
+                # ==============================================================================
                 # 3️⃣ STEP 3: กดเลือก "หาคน" (Employer Tab)
                 # ==============================================================================
                 console.print("   3️⃣  กำลังหาปุ่ม 'หาคน' (Employer Tab)...", style="dim")
@@ -426,22 +426,31 @@ class JobThaiRowScraper:
                 clicked_tab = False
 
                 # --------------------------------------------------------------------------
-                # 🖱️ ATTEMPT 1: ลองใช้เมาส์กดแบบคน (ActionChains) **(ส่วนที่เพิ่ม)**
+                # 🖱️ ATTEMPT 1: ลองใช้เมาส์กดแบบคน (ActionChains)
                 # --------------------------------------------------------------------------
                 try:
                     # หาปุ่มด้วย ID หลักก่อน
                     mouse_btn = self.driver.find_element(By.XPATH, "//*[@id='login_tab_employer']")
                     if mouse_btn.is_displayed():
+                        
+                        # 🕵️ DEBUG BEFORE CLICK
+                        console.print(f"      🕵️ [Before Click 1] URL: {self.driver.current_url} | Tabs: {len(self.driver.window_handles)}", style="magenta")
+
                         # ขยับเมาส์ไปหาแล้วคลิก
                         ActionChains(self.driver).move_to_element(mouse_btn).click().perform()
                         console.print("      ✅ กดปุ่ม 'หาคน' สำเร็จ (ด้วยเมาส์ ActionChains)", style="bold green")
+                        
+                        time.sleep(3) # รอผลลัพธ์
+
+                        # 🕵️ DEBUG AFTER CLICK
+                        console.print(f"      🕵️ [After Click 1] URL: {self.driver.current_url} | Tabs: {len(self.driver.window_handles)}", style="magenta")
+
                         clicked_tab = True
-                        time.sleep(3)
                 except Exception as e:
                     console.print(f"      ⚠️ ใช้เมาส์กดไม่ติด ({e}) ... กำลังสลับไปใช้วิธีเดิม", style="dim")
 
                 # --------------------------------------------------------------------------
-                # 💉 ATTEMPT 2: วิธีเดิม (JS Script Loop) **(Logic เดิมของคุณ)**
+                # 💉 ATTEMPT 2: วิธีเดิม (JS Script Loop)
                 # --------------------------------------------------------------------------
                 if not clicked_tab:
                     employer_selectors = [
@@ -454,10 +463,18 @@ class JobThaiRowScraper:
                         try:
                             elem = self.driver.find_element(by, val)
                             if elem.is_displayed():
+                                # 🕵️ DEBUG BEFORE CLICK
+                                console.print(f"      🕵️ [Before Click 2] URL: {self.driver.current_url}", style="magenta")
+                                
                                 self.driver.execute_script("arguments[0].click();", elem)
-                                clicked_tab = True
                                 console.print(f"      ✅ กดปุ่ม 'หาคน' สำเร็จ (ด้วย Selector: {val})", style="bold green")
-                                time.sleep(3)
+                                
+                                time.sleep(3) # รอผลลัพธ์
+
+                                # 🕵️ DEBUG AFTER CLICK
+                                console.print(f"      🕵️ [After Click 2] URL: {self.driver.current_url} | Tabs: {len(self.driver.window_handles)}", style="magenta")
+
+                                clicked_tab = True
                                 break
                         except: continue
                 
