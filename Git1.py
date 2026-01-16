@@ -344,9 +344,9 @@ class JobThaiRowScraper:
         # 1. เริ่มจากลิงก์สั้น
         entry_point = "https://www.jobthai.com/login?page=resumes&l=th"
         
-        console.rule(f"[bold cyan]🔐 Login Process (Sanitized Mode)[/]")
+        console.rule(f"[bold cyan]🔐 Login Process (Paranoid Mode)[/]")
         
-        # ฟังก์ชันกำจัดสิ่งกีดขวาง (ประกาศไว้บนสุดกันเหนียว)
+        # ฟังก์ชันกำจัดสิ่งกีดขวาง
         def kill_blockers():
             try:
                 self.driver.execute_script("document.querySelectorAll('#close-button, .cookie-consent, [class*=\"pdpa\"], [class*=\"popup\"], .modal-backdrop').forEach(b => b.remove());")
@@ -354,40 +354,50 @@ class JobThaiRowScraper:
 
         try:
             # ==============================================================================
-            # 2️⃣ STEP 2: เข้าหน้าเว็บ & บังคับ URL (แก้บั๊ก URL ขาด)
+            # 2️⃣ STEP 2: เข้าหน้าเว็บ & รอจนกว่า URL จะสมบูรณ์
             # ==============================================================================
             console.print(f"   2️⃣  เริ่มเข้าสู่ระบบจาก: [yellow]{entry_point}[/]", style="dim")
             
             # 1. เข้าลิงก์เริ่มต้น
             self.driver.get(entry_point)
             
-            # 2. รอให้ Server สร้างรหัสสุ่ม
-            console.print("      ⏳ รอ JobThai สร้าง Session ID...", style="dim")
-            WebDriverWait(self.driver, 15).until(EC.url_contains("auth.jobthai.com"))
-            
-            # 3. 🛑 KEY FIX: จับ URL มา "ล้างอักขระซ่อนเร้น" (Sanitize)
-            # แก้ปัญหา URL ติด Newline (\n) ทำให้ driver.get() อ่านไม่ครบ
+            # 2. 🛑 KEY FIX: รอ 2 ขยัก
+            # ขยักที่ 1: รอให้เข้าโดเมน auth ก่อน
+            console.print("      ⏳ รอเข้าสู่หน้า Auth...", style="dim")
+            WebDriverWait(self.driver, 20).until(EC.url_contains("auth.jobthai.com"))
+
+            # ขยักที่ 2: รอให้ URL ยาวพอ (ป้องกัน URL ขาดตอนโหลด)
+            console.print("      ⏳ รอให้ URL โหลดครบทุกตัวอักษร...", style="dim")
+            try:
+                # URL ของ JobThai Auth ปกติจะยาวเกิน 200 ตัวอักษร
+                # เราจะรอจนกว่ามันจะยาวเกิน 150 เพื่อความชัวร์
+                WebDriverWait(self.driver, 20).until(lambda d: len(d.current_url) > 150)
+            except:
+                console.print("      ⚠️ URL สั้นผิดปกติ แต่จะลองไปต่อ...", style="yellow")
+
+            # 3. 🧹 Cleaning & Appending
             raw_url = self.driver.current_url
-            current_url = raw_url.strip().replace("\n", "").replace("\r", "")
+            # ลบทุกช่องว่างและบรรทัดใหม่ที่อาจติดมา
+            clean_url = "".join(raw_url.split())
             
-            console.print(f"      🧹 Cleaned URL: {current_url[:50]}...", style="dim") # เช็คว่าล้างแล้ว
+            console.print(f"      📏 ความยาว URL ที่จับได้: {len(clean_url)} chars", style="cyan")
             
-            if "type=resume" not in current_url:
+            # เช็คว่า URL พังไหม? (ต้องมี client_id และ redirect_uri)
+            if "client_id" not in clean_url or "redirect_uri" not in clean_url:
+                console.print(f"      ❌ URL ดูเหมือนจะขาดหาย! (Dump: {clean_url[:50]}...)", style="bold red")
+                raise Exception("Critical Error: Captured URL is truncated/incomplete.")
+
+            if "type=resume" not in clean_url:
                 console.print(f"      ⚠️ URL ขาด type=resume (กำลังเติมให้...)", style="yellow")
                 
-                separator = "&" if "?" in current_url else "?"
-                fixed_url = current_url + separator + "type=resume"
+                separator = "&" if "?" in clean_url else "?"
+                fixed_url = clean_url + separator + "type=resume"
                 
-                console.print(f"      🔄 Reload ด้วย URL ที่ถูกต้อง...", style="bold cyan")
-                
-                # สั่งโหลดหน้าใหม่ด้วย URL ที่ล้างสะอาดแล้ว
+                console.print(f"      🔄 Reload ด้วย URL ที่สมบูรณ์...", style="bold cyan")
                 self.driver.get(fixed_url)
                 self.wait_for_page_load()
                 time.sleep(3)
-                
-                # เช็คผลลัพธ์
-                final_url = self.driver.current_url
-                console.print(f"      ✅ URL พร้อมใช้งาน (Length: {len(final_url)})", style="green")
+                console.print(f"      ✅ URL พร้อมใช้งาน", style="green")
             else:
                 console.print(f"      ✅ URL สมบูรณ์แล้ว", style="green")
 
