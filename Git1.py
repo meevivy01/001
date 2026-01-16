@@ -373,41 +373,49 @@ class JobThaiRowScraper:
                     raise Exception(f"เข้าเว็บไม่สำเร็จ: {e}")
 
                 # ==============================================================================
-                # 2️⃣ STEP 2: กด TAB หาลิงก์ Login
+                # 2️⃣ STEP 2: เข้าสู่หน้า Employer (แก้ปัญหา Bot Detect จากการกด Tab รัวๆ)
                 # ==============================================================================
-                console.print(f"   2️⃣  เริ่มภารกิจกด TAB หาลิงก์: [yellow]{target_login_link}[/]...", style="dim")
+                # 🛑 เป้าหมายที่ถูกต้อง
+                target_login_link = "https://www.jobthai.com/login?page=resumes&l=th" 
                 
-                link_found = False
-                actions = ActionChains(self.driver)
-                self.driver.find_element(By.TAG_NAME, 'body').click()
+                console.print(f"   2️⃣  กำลังพยายามเข้าสู่หน้า Employer...", style="dim")
                 
-                for i in range(150):
-                    kill_blockers()
-                    actions.send_keys(Keys.TAB).perform()
-                    active_href = self.driver.execute_script("return document.activeElement.href;")
+                link_clicked = False
+                
+                # --- วิธีที่ 1: ใช้เมาส์กด (Human Click) ---
+                # เราจะไม่กด Tab ไล่หาแล้ว แต่จะหาปุ่มที่มีลิงก์นี้โดยตรง
+                try:
+                    kill_blockers() # เคลียร์ทางก่อน
                     
-                    if active_href and target_login_link in str(active_href):
-                        console.print(f"      ✅ เจอปุ่มเป้าหมายแล้ว! (กด Tab ครั้งที่ {i+1})", style="bold green")
-                        actions.send_keys(Keys.ENTER).perform()
-                        link_found = True
-                        time.sleep(3) # รอ Modal เด้ง
-                        break
-                    time.sleep(0.05)
+                    # หาปุ่มที่เป็น Link ไปยังหน้า employer
+                    employer_btn = WebDriverWait(self.driver, 5).until(
+                        EC.presence_of_element_located((By.CSS_SELECTOR, f'a[href*="{target_login_link}"], a[href*="/th/employer"]'))
+                    )
+                    
+                    # ถ้าเจอปุ่ม ให้เอาเมาส์เลื่อนไปกด (เหมือนคน)
+                    if employer_btn.is_displayed():
+                        console.print(f"      👀 เจอปุ่ม Employer แล้ว (ใช้เมาส์กด)...", style="dim")
+                        actions = ActionChains(self.driver)
+                        actions.move_to_element(employer_btn).pause(0.5).click().perform()
+                        link_clicked = True
+                        console.print("      ✅ คลิกปุ่ม Employer สำเร็จ!", style="bold green")
+                        time.sleep(3) # รอหน้าเว็บโหลด
+                except Exception as e:
+                    console.print(f"      ⚠️ หาปุ่มกดไม่เจอ หรือกดไม่ได้ ({e})", style="yellow")
 
-                if not link_found:
-                    console.print("      ⚠️ กด Tab ไม่เจอ (จะลองใช้ JS กดแทน)", style="yellow")
-                    found_by_js = self.driver.execute_script(f"""
-                        var links = document.querySelectorAll('a');
-                        for(var i=0; i<links.length; i++) {{
-                            if(links[i].href.includes('{target_login_link}')) {{
-                                links[i].click();
-                                return true;
-                            }}
-                        }}
-                        return false;
-                    """)
-                    if not found_by_js:
-                        raise Exception(f"หาลิงก์ {target_login_link} ไม่เจอทั้ง Tab และ JS")
+                # --- วิธีที่ 2: Force Redirect (ไม้ตาย) ---
+                # ถ้าวิธีแรกกดไม่ได้ หรือกดแล้วไม่ไป ให้สั่ง Browser พุ่งไป URL นั้นเลย (ชัวร์สุด ไม่โดนจับ)
+                if not link_clicked or target_login_link not in self.driver.current_url:
+                    console.print("      🚀 ใช้วิธี Force Redirect ไปยัง URL โดยตรง (หลบ Bot Detect)", style="bold cyan")
+                    self.driver.get(target_login_link)
+                    self.wait_for_page_load()
+                    time.sleep(2)
+
+                # เช็คความชัวร์อีกที
+                if "employer" in self.driver.current_url:
+                    console.print("      ✅ อยู่หน้า Employer เรียบร้อย", style="bold green")
+                else:
+                    raise Exception(f"พยายามทุกทางแล้ว แต่ยังไปไม่ถึงหน้า Employer (Current: {self.driver.current_url})")
 
                 # ==============================================================================
                 # 3️⃣ STEP 3: กดเลือก "หาคน" (Employer Tab)
