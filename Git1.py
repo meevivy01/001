@@ -340,13 +340,16 @@ class JobThaiRowScraper:
     # ==============================================================================
     # 🔥 STEP 1: LOGIN (Dynamic URL Handling)
     # ==============================================================================
+    # ==============================================================================
+    # 🔥 STEP 1: LOGIN (URL Reconstruction Mode - สร้าง URL ใหม่เอง)
+    # ==============================================================================
     def step1_login(self):
         # 1. เริ่มจากลิงก์สั้น
         entry_point = "https://www.jobthai.com/login?page=resumes&l=th"
         
-        console.rule(f"[bold cyan]🔐 Login Process (Deep Clean URL)[/]")
+        console.rule(f"[bold cyan]🔐 Login Process (Reconstruct Mode)[/]")
         
-        # ฟังก์ชันฆ่าตัวบังหน้าจอ
+        # ฟังก์ชันกำจัดสิ่งกีดขวาง
         def kill_blockers():
             try:
                 self.driver.execute_script("document.querySelectorAll('#close-button, .cookie-consent, [class*=\"pdpa\"], [class*=\"popup\"], .modal-backdrop').forEach(b => b.remove());")
@@ -354,7 +357,7 @@ class JobThaiRowScraper:
 
         try:
             # ==============================================================================
-            # 2️⃣ STEP 2: เข้าหน้าเว็บ & ดูด URL & ล้าง Enter
+            # 2️⃣ STEP 2: เข้าหน้าเว็บ -> ดึงค่าทีละตัว -> ประกอบ URL ใหม่
             # ==============================================================================
             console.print(f"   2️⃣  เริ่มเข้าสู่ระบบจาก: [yellow]{entry_point}[/]", style="dim")
             self.driver.get(entry_point)
@@ -362,44 +365,62 @@ class JobThaiRowScraper:
             console.print("      ⏳ รอเข้าสู่หน้า Auth...", style="dim")
             WebDriverWait(self.driver, 20).until(EC.url_contains("auth.jobthai.com"))
 
-            # 🛑 KEY FIX: ใช้ Loop ดูด URL และล้างทำความสะอาดทันที
-            console.print("      ⏳ กำลังดูด URL และล้างอักขระซ่อนเร้น...", style="dim")
+            console.print("      🔧 กำลังแยกชิ้นส่วน URL และประกอบใหม่...", style="dim")
             
-            clean_full_url = ""
+            reconstructed_url = ""
             
             for i in range(10): # ให้เวลา 10 วินาที
-                # 1. ดูด URL ดิบๆ มาจาก Browser (ใช้ JS ชัวร์กว่า)
-                raw_url = self.driver.execute_script("return window.location.href;")
+                try:
+                    # 1. ใช้ JS ดึงค่า Parameter ทีละตัว (วิธีนี้ไม่มีทางติด Enter มาแน่นอน)
+                    params = self.driver.execute_script("""
+                        const urlParams = new URLSearchParams(window.location.search);
+                        return {
+                            client_id: urlParams.get('client_id'),
+                            redirect_uri: urlParams.get('redirect_uri'),
+                            state: urlParams.get('state'),
+                            scope: urlParams.get('scope'),
+                            l: urlParams.get('l'),
+                            response_type: urlParams.get('response_type')
+                        };
+                    """)
+                    
+                    # 2. เช็คว่าได้ค่าสำคัญมาครบไหม
+                    if params['client_id'] and params['redirect_uri']:
+                        console.print(f"      ✅ ได้ค่า Client ID: {params['client_id'][:10]}...", style="green")
+                        
+                        # 3. ประกอบร่าง URL ใหม่เองใน Python (สะอาด 100%)
+                        # โครงสร้าง: base_url + params + type=resume
+                        base_url = "https://auth.jobthai.com/resumes/login"
+                        
+                        # สร้าง Query String แบบ Manual เพื่อความชัวร์
+                        query_parts = [
+                            f"client_id={params['client_id']}",
+                            f"response_type={params.get('response_type', 'code')}", # ถ้าไม่มีให้ default เป็น code
+                            f"redirect_uri={params['redirect_uri']}",
+                            f"scope={params.get('scope', 'login')}",
+                            f"l={params.get('l', 'th')}",
+                            f"state={params.get('state', '')}",
+                            "type=resume" # 🎯 พระเอกของเรา ใส่ตรงนี้เลย
+                        ]
+                        
+                        # รวมร่าง
+                        reconstructed_url = f"{base_url}?{'&'.join(query_parts)}"
+                        console.print(f"      ✨ สร้าง URL ใหม่สำเร็จ (Length: {len(reconstructed_url)})", style="bold cyan")
+                        break
+                except Exception as e:
+                    console.print(f"      ⚠️ กำลังพยายามดึงค่า... ({e})", style="dim")
                 
-                # 2. 🧹 ล้างสังหาร: ลบ Enter (\n, \r) และช่องว่างทิ้งให้หมด!
-                temp_url = str(raw_url).replace("\n", "").replace("\r", "").strip()
-                
-                # 3. เช็คว่า URL สมบูรณ์ไหม (ต้องยาวพอ และมี client_id)
-                if "client_id" in temp_url and len(temp_url) > 150:
-                    clean_full_url = temp_url
-                    console.print(f"      ✅ จับ URL ตัวเต็มได้แล้ว (ยาว: {len(clean_full_url)})", style="green")
-                    # console.print(f"      🔗 Clean URL: {clean_full_url}", style="dim")
-                    break
                 time.sleep(1)
             
-            if not clean_full_url:
-                raise Exception("จับ URL ไม่สำเร็จ หรือ URL ขาดหาย")
+            if not reconstructed_url:
+                raise Exception("ไม่สามารถดึงค่าพารามิเตอร์เพื่อสร้าง URL ได้")
 
-            # 3. เติม &type=resume (ถ้าไม่มี) และโหลดใหม่
-            if "type=resume" not in clean_full_url:
-                console.print(f"      ⚠️ URL ขาด type=resume (กำลังเติมให้...)", style="yellow")
-                
-                separator = "&" if "?" in clean_full_url else "?"
-                # เอา URL ที่ล้างแล้วมาใช้ มั่นใจได้ว่าไม่มี Enter แทรก
-                fixed_url = clean_full_url + separator + "type=resume"
-                
-                console.print(f"      🔄 Reload ด้วย URL ที่สะอาดแล้ว...", style="bold cyan")
-                self.driver.get(fixed_url)
-                self.wait_for_page_load()
-                time.sleep(3)
-                console.print(f"      ✅ URL พร้อมใช้งาน", style="green")
-            else:
-                console.print(f"      ✅ URL สมบูรณ์แล้ว", style="green")
+            # 4. สั่งโหลดหน้าเว็บด้วย URL ที่เราสร้างเอง
+            console.print(f"      🔄 Reload ด้วย URL ที่ประกอบใหม่...", style="bold cyan")
+            self.driver.get(reconstructed_url)
+            self.wait_for_page_load()
+            time.sleep(3)
+            console.print(f"      ✅ URL พร้อมใช้งาน", style="green")
 
             # ==============================================================================
             # 3️⃣ STEP 3: กดเลือก "หาคน" (Employer Tab)
