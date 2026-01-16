@@ -415,6 +415,7 @@ class JobThaiRowScraper:
                 console.print("   3️⃣  กำลังหาปุ่ม 'หาคน' (Employer Tab)...", style="dim")
                 kill_blockers()
                 
+                # 1. รอให้ปุ่มปรากฏ (เหมือนเดิม)
                 try:
                     WebDriverWait(self.driver, 10).until(
                         EC.visibility_of_element_located((By.XPATH, "//*[@id='login_tab_employer']"))
@@ -423,22 +424,42 @@ class JobThaiRowScraper:
                     console.print("      ⚠️ ไม่เห็นปุ่ม ID login_tab_employer (อาจโดนบัง หรือ Modal ไม่มา)", style="red")
 
                 clicked_tab = False
-                employer_selectors = [
-                    (By.XPATH, "//*[@id='login_tab_employer']"),
-                    (By.XPATH, "//span[contains(text(), 'หาคน')]"),
-                    (By.CSS_SELECTOR, "div#login_tab_employer")
-                ]
 
-                for by, val in employer_selectors:
-                    try:
-                        elem = self.driver.find_element(by, val)
-                        if elem.is_displayed():
-                            self.driver.execute_script("arguments[0].click();", elem)
-                            clicked_tab = True
-                            console.print(f"      ✅ กดปุ่ม 'หาคน' สำเร็จ (ด้วย Selector: {val})", style="bold green")
-                            time.sleep(3)
-                            break
-                    except: continue
+                # --------------------------------------------------------------------------
+                # 🖱️ ATTEMPT 1: ลองใช้เมาส์กดแบบคน (ActionChains) **(ส่วนที่เพิ่ม)**
+                # --------------------------------------------------------------------------
+                try:
+                    # หาปุ่มด้วย ID หลักก่อน
+                    mouse_btn = self.driver.find_element(By.XPATH, "//*[@id='login_tab_employer']")
+                    if mouse_btn.is_displayed():
+                        # ขยับเมาส์ไปหาแล้วคลิก
+                        ActionChains(self.driver).move_to_element(mouse_btn).click().perform()
+                        console.print("      ✅ กดปุ่ม 'หาคน' สำเร็จ (ด้วยเมาส์ ActionChains)", style="bold green")
+                        clicked_tab = True
+                        time.sleep(3)
+                except Exception as e:
+                    console.print(f"      ⚠️ ใช้เมาส์กดไม่ติด ({e}) ... กำลังสลับไปใช้วิธีเดิม", style="dim")
+
+                # --------------------------------------------------------------------------
+                # 💉 ATTEMPT 2: วิธีเดิม (JS Script Loop) **(Logic เดิมของคุณ)**
+                # --------------------------------------------------------------------------
+                if not clicked_tab:
+                    employer_selectors = [
+                        (By.XPATH, "//*[@id='login_tab_employer']"),
+                        (By.XPATH, "//span[contains(text(), 'หาคน')]"),
+                        (By.CSS_SELECTOR, "div#login_tab_employer")
+                    ]
+
+                    for by, val in employer_selectors:
+                        try:
+                            elem = self.driver.find_element(by, val)
+                            if elem.is_displayed():
+                                self.driver.execute_script("arguments[0].click();", elem)
+                                clicked_tab = True
+                                console.print(f"      ✅ กดปุ่ม 'หาคน' สำเร็จ (ด้วย Selector: {val})", style="bold green")
+                                time.sleep(3)
+                                break
+                        except: continue
                 
                 if not clicked_tab:
                     raise Exception("หาปุ่ม 'หาคน' ไม่เจอ หรือกดไม่ได้")
