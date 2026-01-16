@@ -393,9 +393,10 @@ class JobThaiRowScraper:
                         base_url = "https://auth.jobthai.com/resumes/login"
                         
                         # สร้าง Query String แบบ Manual เพื่อความชัวร์
+                        # การทำแบบนี้จะไม่มีทางมี \n หลุดเข้ามาได้
                         query_parts = [
                             f"client_id={params['client_id']}",
-                            f"response_type={params.get('response_type', 'code')}", # ถ้าไม่มีให้ default เป็น code
+                            f"response_type={params.get('response_type', 'code')}", 
                             f"redirect_uri={params['redirect_uri']}",
                             f"scope={params.get('scope', 'login')}",
                             f"l={params.get('l', 'th')}",
@@ -403,8 +404,12 @@ class JobThaiRowScraper:
                             "type=resume" # 🎯 พระเอกของเรา ใส่ตรงนี้เลย
                         ]
                         
-                        # รวมร่าง
+                        # รวมร่างด้วย &
                         reconstructed_url = f"{base_url}?{'&'.join(query_parts)}"
+                        
+                        # ลบช่องว่างที่อาจจะเผลอติดมา (กันเหนียว)
+                        reconstructed_url = reconstructed_url.replace(" ", "").replace("\n", "").replace("\r", "")
+                        
                         console.print(f"      ✨ สร้าง URL ใหม่สำเร็จ (Length: {len(reconstructed_url)})", style="bold cyan")
                         break
                 except Exception as e:
@@ -421,7 +426,6 @@ class JobThaiRowScraper:
             self.wait_for_page_load()
             time.sleep(3)
             console.print(f"      ✅ URL พร้อมใช้งาน", style="green")
-
             # ==============================================================================
             # 3️⃣ STEP 3: กดเลือก "หาคน" (Employer Tab)
             # ==============================================================================
