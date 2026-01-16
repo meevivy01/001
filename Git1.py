@@ -341,12 +341,12 @@ class JobThaiRowScraper:
     # 🔥 STEP 1: LOGIN (Dynamic URL Handling)
     # ==============================================================================
     def step1_login(self):
-        # 1. เริ่มจากลิงก์สั้น (Entry Point)
+        # 1. เริ่มจากลิงก์สั้น
         entry_point = "https://www.jobthai.com/login?page=resumes&l=th"
         
-        console.rule(f"[bold cyan]🔐 Login Process (JS Capture Mode)[/]")
+        console.rule(f"[bold cyan]🔐 Login Process (Deep Clean URL)[/]")
         
-        # ฟังก์ชันกำจัดสิ่งกีดขวาง (ประกาศไว้บนสุด เพื่อกัน Error)
+        # ฟังก์ชันฆ่าตัวบังหน้าจอ
         def kill_blockers():
             try:
                 self.driver.execute_script("document.querySelectorAll('#close-button, .cookie-consent, [class*=\"pdpa\"], [class*=\"popup\"], .modal-backdrop').forEach(b => b.remove());")
@@ -354,50 +354,46 @@ class JobThaiRowScraper:
 
         try:
             # ==============================================================================
-            # 2️⃣ STEP 2: เข้าหน้าเว็บ & ใช้ JS ดูด URL ตัวเต็ม
+            # 2️⃣ STEP 2: เข้าหน้าเว็บ & ดูด URL & ล้าง Enter
             # ==============================================================================
             console.print(f"   2️⃣  เริ่มเข้าสู่ระบบจาก: [yellow]{entry_point}[/]", style="dim")
-            
-            # 1. เข้าลิงก์เริ่มต้น
             self.driver.get(entry_point)
             
-            # 2. รอให้เด้งไปหน้า Auth
             console.print("      ⏳ รอเข้าสู่หน้า Auth...", style="dim")
             WebDriverWait(self.driver, 20).until(EC.url_contains("auth.jobthai.com"))
 
-            # 3. 🛑 KEY FIX: ใช้ JS ดูด URL + วนลูปรอจนกว่าจะได้ URL เต็ม
-            # (แก้ปัญหา GitHub Actions ตัด URL ขาด)
-            console.print("      ⏳ กำลังดูด URL และตรวจสอบความสมบูรณ์...", style="dim")
+            # 🛑 KEY FIX: ใช้ Loop ดูด URL และล้างทำความสะอาดทันที
+            console.print("      ⏳ กำลังดูด URL และล้างอักขระซ่อนเร้น...", style="dim")
             
-            full_url = ""
-            for i in range(10): # ให้โอกาส 10 รอบ (10 วินาที)
-                # ใช้ JS ดึง URL (เสถียรกว่า Python driver.current_url)
+            clean_full_url = ""
+            
+            for i in range(10): # ให้เวลา 10 วินาที
+                # 1. ดูด URL ดิบๆ มาจาก Browser (ใช้ JS ชัวร์กว่า)
                 raw_url = self.driver.execute_script("return window.location.href;")
                 
-                # ล้างอักขระชั่วร้าย (\n, \r, ช่องว่าง) ออกให้หมด
-                clean_url = str(raw_url).strip().replace("\n", "").replace("\r", "").replace(" ", "")
+                # 2. 🧹 ล้างสังหาร: ลบ Enter (\n, \r) และช่องว่างทิ้งให้หมด!
+                temp_url = str(raw_url).replace("\n", "").replace("\r", "").strip()
                 
-                # เช็คว่า URL สมบูรณ์ไหม? (ต้องมี client_id, redirect_uri และยาวพอ)
-                if "client_id" in clean_url and "redirect_uri" in clean_url and len(clean_url) > 150:
-                    full_url = clean_url
-                    console.print(f"      ✅ จับ URL ตัวเต็มได้แล้ว (Length: {len(full_url)})", style="green")
+                # 3. เช็คว่า URL สมบูรณ์ไหม (ต้องยาวพอ และมี client_id)
+                if "client_id" in temp_url and len(temp_url) > 150:
+                    clean_full_url = temp_url
+                    console.print(f"      ✅ จับ URL ตัวเต็มได้แล้ว (ยาว: {len(clean_full_url)})", style="green")
+                    # console.print(f"      🔗 Clean URL: {clean_full_url}", style="dim")
                     break
-                
                 time.sleep(1)
             
-            # ถ้าวนครบแล้วยังไม่ได้ URL ที่ดี -> แจ้ง Error
-            if not full_url:
-                console.print(f"      ❌ URL ผิดปกติ/ขาดหาย: {clean_url[:50]}...", style="bold red")
-                raise Exception("Critical: Unable to capture full URL from browser.")
+            if not clean_full_url:
+                raise Exception("จับ URL ไม่สำเร็จ หรือ URL ขาดหาย")
 
-            # 4. เติม &type=resume (ถ้ายังไม่มี)
-            if "type=resume" not in full_url:
+            # 3. เติม &type=resume (ถ้าไม่มี) และโหลดใหม่
+            if "type=resume" not in clean_full_url:
                 console.print(f"      ⚠️ URL ขาด type=resume (กำลังเติมให้...)", style="yellow")
                 
-                separator = "&" if "?" in full_url else "?"
-                fixed_url = full_url + separator + "type=resume"
+                separator = "&" if "?" in clean_full_url else "?"
+                # เอา URL ที่ล้างแล้วมาใช้ มั่นใจได้ว่าไม่มี Enter แทรก
+                fixed_url = clean_full_url + separator + "type=resume"
                 
-                console.print(f"      🔄 Reload ด้วย URL ตัวเต็ม...", style="bold cyan")
+                console.print(f"      🔄 Reload ด้วย URL ที่สะอาดแล้ว...", style="bold cyan")
                 self.driver.get(fixed_url)
                 self.wait_for_page_load()
                 time.sleep(3)
