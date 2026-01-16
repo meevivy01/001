@@ -341,42 +341,55 @@ class JobThaiRowScraper:
     # 🔥 STEP 1: LOGIN (Dynamic URL Handling)
     # ==============================================================================
     def step1_login(self):
-        # 1. เริ่มจากลิงก์สั้น (EntryPoint) เพื่อให้ Server สร้างรหัสสุ่มให้เรา
+        # 1. เริ่มจากลิงก์สั้น
         entry_point = "https://www.jobthai.com/login?page=resumes&l=th"
         
-        console.rule(f"[bold cyan]🔐 Login Process (Auto-Append Type)[/]")
+        console.rule(f"[bold cyan]🔐 Login Process (Sanitized Mode)[/]")
         
+        # ฟังก์ชันกำจัดสิ่งกีดขวาง (ประกาศไว้บนสุดกันเหนียว)
+        def kill_blockers():
+            try:
+                self.driver.execute_script("document.querySelectorAll('#close-button, .cookie-consent, [class*=\"pdpa\"], [class*=\"popup\"], .modal-backdrop').forEach(b => b.remove());")
+            except: pass
+
         try:
             # ==============================================================================
-            # 2️⃣ STEP 2: เข้าหน้าเว็บ & เติม Parameter เอง
+            # 2️⃣ STEP 2: เข้าหน้าเว็บ & บังคับ URL (แก้บั๊ก URL ขาด)
             # ==============================================================================
             console.print(f"   2️⃣  เริ่มเข้าสู่ระบบจาก: [yellow]{entry_point}[/]", style="dim")
             
             # 1. เข้าลิงก์เริ่มต้น
             self.driver.get(entry_point)
             
-            # 2. รอให้ Server สร้างรหัสสุ่ม และพาเราไปหน้า Auth
+            # 2. รอให้ Server สร้างรหัสสุ่ม
             console.print("      ⏳ รอ JobThai สร้าง Session ID...", style="dim")
             WebDriverWait(self.driver, 15).until(EC.url_contains("auth.jobthai.com"))
             
-            # 3. 🛑 KEY FIX: จับ URL ปัจจุบัน (ที่มีรหัสถูกต้อง) มาเติม &type=resume
-            current_url = self.driver.current_url
+            # 3. 🛑 KEY FIX: จับ URL มา "ล้างอักขระซ่อนเร้น" (Sanitize)
+            # แก้ปัญหา URL ติด Newline (\n) ทำให้ driver.get() อ่านไม่ครบ
+            raw_url = self.driver.current_url
+            current_url = raw_url.strip().replace("\n", "").replace("\r", "")
+            
+            console.print(f"      🧹 Cleaned URL: {current_url[:50]}...", style="dim") # เช็คว่าล้างแล้ว
             
             if "type=resume" not in current_url:
                 console.print(f"      ⚠️ URL ขาด type=resume (กำลังเติมให้...)", style="yellow")
                 
-                # เช็คว่าต้องเชื่อมด้วย ? หรือ &
                 separator = "&" if "?" in current_url else "?"
                 fixed_url = current_url + separator + "type=resume"
                 
-                console.print(f"      🔄 Reload ด้วย URL ที่สมบูรณ์...", style="bold cyan")
+                console.print(f"      🔄 Reload ด้วย URL ที่ถูกต้อง...", style="bold cyan")
+                
+                # สั่งโหลดหน้าใหม่ด้วย URL ที่ล้างสะอาดแล้ว
                 self.driver.get(fixed_url)
                 self.wait_for_page_load()
                 time.sleep(3)
                 
-                console.print(f"      ✅ URL พร้อมใช้งาน: {self.driver.current_url}", style="green")
+                # เช็คผลลัพธ์
+                final_url = self.driver.current_url
+                console.print(f"      ✅ URL พร้อมใช้งาน (Length: {len(final_url)})", style="green")
             else:
-                console.print(f"      ✅ URL สมบูรณ์แล้ว (Server ส่งมาให้ครบ)", style="green")
+                console.print(f"      ✅ URL สมบูรณ์แล้ว", style="green")
 
             # ==============================================================================
             # 3️⃣ STEP 3: กดเลือก "หาคน" (Employer Tab)
