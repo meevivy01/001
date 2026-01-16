@@ -378,278 +378,278 @@ class JobThaiRowScraper:
             else:
                 console.print(f"      ✅ URL สมบูรณ์แล้ว (Server ส่งมาให้ครบ)", style="green")
 
-                # ==============================================================================
-                # 3️⃣ STEP 3: กดเลือก "หาคน" (Employer Tab)
-                # ==============================================================================
-                console.print("   3️⃣  กำลังหาปุ่ม 'หาคน' (Employer Tab)...", style="dim")
-                kill_blockers()
+            # ==============================================================================
+            # 3️⃣ STEP 3: กดเลือก "หาคน" (Employer Tab)
+            # ==============================================================================
+            console.print("   3️⃣  กำลังหาปุ่ม 'หาคน' (Employer Tab)...", style="dim")
+            kill_blockers()
+            
+            # 1. รอให้ปุ่มปรากฏ (เหมือนเดิม)
+            try:
+                WebDriverWait(self.driver, 10).until(
+                    EC.visibility_of_element_located((By.XPATH, "//*[@id='login_tab_employer']"))
+                )
+            except: 
+                console.print("      ⚠️ ไม่เห็นปุ่ม ID login_tab_employer (อาจโดนบัง หรือ Modal ไม่มา)", style="red")
+
+            clicked_tab = False
+
+            # --------------------------------------------------------------------------
+            # 🖱️ ATTEMPT 1: ลองใช้เมาส์กดแบบคน (ActionChains)
+            # --------------------------------------------------------------------------
+            try:
+                # หาปุ่มด้วย ID หลักก่อน
+                mouse_btn = self.driver.find_element(By.XPATH, "//*[@id='login_tab_employer']")
+                if mouse_btn.is_displayed():
+                    
+                    # 🕵️ DEBUG BEFORE CLICK
+                    console.print(f"      🕵️ [Before Click 1] URL: {self.driver.current_url} | Tabs: {len(self.driver.window_handles)}", style="magenta")
+
+                    # ขยับเมาส์ไปหาแล้วคลิก
+                    ActionChains(self.driver).move_to_element(mouse_btn).click().perform()
+                    console.print("      ✅ กดปุ่ม 'หาคน' สำเร็จ (ด้วยเมาส์ ActionChains)", style="bold green")
+                    
+                    time.sleep(3) # รอผลลัพธ์
+
+                    # 🕵️ DEBUG AFTER CLICK
+                    console.print(f"      🕵️ [After Click 1] URL: {self.driver.current_url} | Tabs: {len(self.driver.window_handles)}", style="magenta")
+
+                    clicked_tab = True
+            except Exception as e:
+                console.print(f"      ⚠️ ใช้เมาส์กดไม่ติด ({e}) ... กำลังสลับไปใช้วิธีเดิม", style="dim")
+
+            # --------------------------------------------------------------------------
+            # 💉 ATTEMPT 2: วิธีเดิม (JS Script Loop)
+            # --------------------------------------------------------------------------
+            if not clicked_tab:
+                employer_selectors = [
+                    (By.XPATH, "//*[@id='login_tab_employer']"),
+                    (By.XPATH, "//span[contains(text(), 'หาคน')]"),
+                    (By.CSS_SELECTOR, "div#login_tab_employer")
+                ]
+
+                for by, val in employer_selectors:
+                    try:
+                        elem = self.driver.find_element(by, val)
+                        if elem.is_displayed():
+                            # 🕵️ DEBUG BEFORE CLICK
+                            console.print(f"      🕵️ [Before Click 2] URL: {self.driver.current_url}", style="magenta")
+                            
+                            self.driver.execute_script("arguments[0].click();", elem)
+                            console.print(f"      ✅ กดปุ่ม 'หาคน' สำเร็จ (ด้วย Selector: {val})", style="bold green")
+                            
+                            time.sleep(3) # รอผลลัพธ์
+
+                            # 🕵️ DEBUG AFTER CLICK
+                            console.print(f"      🕵️ [After Click 2] URL: {self.driver.current_url} | Tabs: {len(self.driver.window_handles)}", style="magenta")
+
+                            clicked_tab = True
+                            break
+                    except: continue
+            
+            if not clicked_tab:
+                raise Exception("หาปุ่ม 'หาคน' ไม่เจอ หรือกดไม่ได้")
+
+
+            # ==============================================================================
+            # 4️⃣ STEP 4: กรอกข้อมูล (Hybrid Mode: Standard First -> Stealth -> Iframe)
+            # ==============================================================================
+            console.print("   4️⃣  เริ่มกระบวนการกรอกรหัส (Hybrid Mode)...", style="dim")
+            kill_blockers()
+
+            # 🛑 DEBUG: เช็คว่าตอนนี้ Driver อยู่ที่หน้าไหนแน่?
+            console.print(f"      📍 [bold magenta]Debug Location:[/]")
+            console.print(f"          🔗 URL: {self.driver.current_url}")
+            console.print(f"          📄 Title: {self.driver.title}")
+            console.print(f"          🪟 Tabs Open: {len(self.driver.window_handles)}")
+
+            # ถ้ามี Tab มากกว่า 1 ให้เตือน (เพราะ JobThai ชอบเด้ง Tab ใหม่)
+            if len(self.driver.window_handles) > 1:
+                console.print("          ⚠️ พบ Tab มากกว่า 1! (อาจต้องสลับหน้าต่าง)", style="bold yellow")
+
+            # 🛑 FIX: เพิ่มการรอ (Wait) กลับเข้ามา เพื่อไม่ให้ข้ามไป Iframe เร็วเกินไป
+            console.print("      ⏳ รอให้ฟอร์ม Login ปรากฏ...", style="dim")
+            try:
+                WebDriverWait(self.driver, 15).until(
+                    EC.presence_of_element_located((By.ID, "login-form-username"))
+                )
+            except:
+                # Log เพิ่มตอนหาไม่เจอ
+                console.print("      ⚠️ ยังไม่เจอช่องกรอกในหน้าหลักทันที (อาจอยู่ใน Iframe หรือเน็ตช้า)", style="yellow")
+                console.print(f"      🔗 URL ขณะที่หาไม่เจอ: {self.driver.current_url}", style="dim")
+
+            # --- 🛠️ Core Logic: ฟังก์ชันสำหรับกรอก (Log แน่นเหมือนเดิม) ---
+            def attempt_fill_form(context_name="Main Page"):
+                # Credentials
+                credentials = {
+                    "login-form-username": MY_USERNAME,
+                    "login-form-password": MY_PASSWORD
+                }
                 
-                # 1. รอให้ปุ่มปรากฏ (เหมือนเดิม)
+                # Check ว่าเจอ Input ไหมใน Context นี้
                 try:
-                    WebDriverWait(self.driver, 10).until(
-                        EC.visibility_of_element_located((By.XPATH, "//*[@id='login_tab_employer']"))
-                    )
-                except: 
-                    console.print("      ⚠️ ไม่เห็นปุ่ม ID login_tab_employer (อาจโดนบัง หรือ Modal ไม่มา)", style="red")
+                    self.driver.find_element(By.ID, "login-form-username")
+                    console.print(f"      👀 พบฟอร์ม Login ที่: [bold blue]{context_name}[/]", style="dim")
+                except:
+                    return False # ไม่เจอ Input ในหน้านี้/iframe นี้
 
-                clicked_tab = False
+                for field_id, value in credentials.items():
+                    filled_success = False
+                    elem = self.driver.find_element(By.ID, field_id)
+                    console.print(f"      👉 กำลังจัดการช่อง: [cyan]{field_id}[/]", style="dim")
 
-                # --------------------------------------------------------------------------
-                # 🖱️ ATTEMPT 1: ลองใช้เมาส์กดแบบคน (ActionChains)
-                # --------------------------------------------------------------------------
-                try:
-                    # หาปุ่มด้วย ID หลักก่อน
-                    mouse_btn = self.driver.find_element(By.XPATH, "//*[@id='login_tab_employer']")
-                    if mouse_btn.is_displayed():
-                        
-                        # 🕵️ DEBUG BEFORE CLICK
-                        console.print(f"      🕵️ [Before Click 1] URL: {self.driver.current_url} | Tabs: {len(self.driver.window_handles)}", style="magenta")
-
-                        # ขยับเมาส์ไปหาแล้วคลิก
-                        ActionChains(self.driver).move_to_element(mouse_btn).click().perform()
-                        console.print("      ✅ กดปุ่ม 'หาคน' สำเร็จ (ด้วยเมาส์ ActionChains)", style="bold green")
-                        
-                        time.sleep(3) # รอผลลัพธ์
-
-                        # 🕵️ DEBUG AFTER CLICK
-                        console.print(f"      🕵️ [After Click 1] URL: {self.driver.current_url} | Tabs: {len(self.driver.window_handles)}", style="magenta")
-
-                        clicked_tab = True
-                except Exception as e:
-                    console.print(f"      ⚠️ ใช้เมาส์กดไม่ติด ({e}) ... กำลังสลับไปใช้วิธีเดิม", style="dim")
-
-                # --------------------------------------------------------------------------
-                # 💉 ATTEMPT 2: วิธีเดิม (JS Script Loop)
-                # --------------------------------------------------------------------------
-                if not clicked_tab:
-                    employer_selectors = [
-                        (By.XPATH, "//*[@id='login_tab_employer']"),
-                        (By.XPATH, "//span[contains(text(), 'หาคน')]"),
-                        (By.CSS_SELECTOR, "div#login_tab_employer")
-                    ]
-
-                    for by, val in employer_selectors:
+                    # --- PHASE 1: Standard Interaction (ลองคลิกธรรมดา 2 ครั้งตามสั่ง) ---
+                    for i in range(2):
                         try:
-                            elem = self.driver.find_element(by, val)
-                            if elem.is_displayed():
-                                # 🕵️ DEBUG BEFORE CLICK
-                                console.print(f"      🕵️ [Before Click 2] URL: {self.driver.current_url}", style="magenta")
-                                
-                                self.driver.execute_script("arguments[0].click();", elem)
-                                console.print(f"      ✅ กดปุ่ม 'หาคน' สำเร็จ (ด้วย Selector: {val})", style="bold green")
-                                
-                                time.sleep(3) # รอผลลัพธ์
+                            # console.print(f"          ⏳ ลองแบบปกติ (Standard) รอบที่ {i+1}...", style="dim")
+                            elem.click()
+                            elem.clear()
+                            elem.send_keys(value)
+                            if elem.get_attribute('value') == value:
+                                console.print(f"          ✅ กรอกแบบปกติสำเร็จ (Standard Attempt {i+1})", style="green")
+                                filled_success = True
+                                break
+                        except: 
+                            time.sleep(0.5)
+                    
+                    if filled_success: continue # ไป Field ถัดไป
 
-                                # 🕵️ DEBUG AFTER CLICK
-                                console.print(f"      🕵️ [After Click 2] URL: {self.driver.current_url} | Tabs: {len(self.driver.window_handles)}", style="magenta")
+                    # --- PHASE 2: Ultimate Stealth (ถ้าแบบปกติไม่ผ่าน) ---
+                    console.print(f"          ⚠️ แบบปกติไม่ได้ผล... เปิดโหมด [bold red]Ultimate Stealth[/]", style="yellow")
+                    
+                    # Helper: Human Type
+                    def human_type(element, text):
+                        element.click()
+                        element.send_keys(Keys.CONTROL + "a")
+                        element.send_keys(Keys.DELETE)
+                        time.sleep(random.uniform(0.1, 0.3))
+                        for char in text:
+                            element.send_keys(char)
+                            time.sleep(random.uniform(0.04, 0.1))
 
-                                clicked_tab = True
+                    # Helper: JS Force
+                    def js_force_fill(elem_id, value):
+                        self.driver.execute_script(f"document.getElementById('{elem_id}').value = '{value}';")
+
+                    methods = ["Human Typing", "JS Force Fill"]
+                    for method in methods:
+                        try:
+                            if method == "Human Typing": human_type(elem, value)
+                            elif method == "JS Force Fill": js_force_fill(field_id, value)
+                            
+                            # ตรวจสอบผล
+                            if elem.get_attribute('value') == value:
+                                console.print(f"          ✅ กรอกสำเร็จ (Method: {method})", style="green")
+                                filled_success = True
+                                break
+                            else:
+                                console.print(f"          ⚠️ {method} ไม่ติด... ลองวิธีต่อไป", style="dim")
+                        except: pass
+                    
+                    if not filled_success: 
+                        console.print(f"          ❌ กรอก {field_id} ล้มเหลวทุกวิธี", style="bold red")
+                        return False # ล้มเหลวใน Field นี้
+                
+                return True # กรอกครบทุก Field
+
+            # --- 🚀 RUN STEP 4: Main Logic ---
+            form_filled = False
+            
+            # 1. ลองหาในหน้าหลักก่อน
+            if attempt_fill_form("Main Page"):
+                form_filled = True
+            
+            # 2. ถ้าไม่เจอ ให้มุดหาใน Iframe (Iframe Support อย่างสมบูรณ์)
+            else:
+                console.print("      ⚠️ ไม่เจอฟอร์มหน้าหลัก... เริ่มสแกน Iframes...", style="yellow")
+                iframes = self.driver.find_elements(By.TAG_NAME, "iframe")
+                if iframes:
+                    console.print(f"      👀 เจอ {len(iframes)} Iframes กำลังตรวจสอบ...", style="dim")
+                    for index, frame in enumerate(iframes):
+                        try:
+                            self.driver.switch_to.default_content() # Reset
+                            self.driver.switch_to.frame(frame)
+                            if attempt_fill_form(f"Iframe #{index+1}"):
+                                console.print(f"      🎉 เจอและกรอกใน Iframe #{index+1} สำเร็จ!", style="bold green")
+                                form_filled = True
                                 break
                         except: continue
-                
-                if not clicked_tab:
-                    raise Exception("หาปุ่ม 'หาคน' ไม่เจอ หรือกดไม่ได้")
-
-
-               # ==============================================================================
-                # 4️⃣ STEP 4: กรอกข้อมูล (Hybrid Mode: Standard First -> Stealth -> Iframe)
-                # ==============================================================================
-                console.print("   4️⃣  เริ่มกระบวนการกรอกรหัส (Hybrid Mode)...", style="dim")
-                kill_blockers()
-
-                # 🛑 DEBUG: เช็คว่าตอนนี้ Driver อยู่ที่หน้าไหนแน่?
-                console.print(f"      📍 [bold magenta]Debug Location:[/]")
-                console.print(f"         🔗 URL: {self.driver.current_url}")
-                console.print(f"         📄 Title: {self.driver.title}")
-                console.print(f"         🪟 Tabs Open: {len(self.driver.window_handles)}")
-
-                # ถ้ามี Tab มากกว่า 1 ให้เตือน (เพราะ JobThai ชอบเด้ง Tab ใหม่)
-                if len(self.driver.window_handles) > 1:
-                    console.print("         ⚠️ พบ Tab มากกว่า 1! (อาจต้องสลับหน้าต่าง)", style="bold yellow")
-
-                # 🛑 FIX: เพิ่มการรอ (Wait) กลับเข้ามา เพื่อไม่ให้ข้ามไป Iframe เร็วเกินไป
-                console.print("      ⏳ รอให้ฟอร์ม Login ปรากฏ...", style="dim")
-                try:
-                    WebDriverWait(self.driver, 15).until(
-                        EC.presence_of_element_located((By.ID, "login-form-username"))
-                    )
-                except:
-                    # Log เพิ่มตอนหาไม่เจอ
-                    console.print("      ⚠️ ยังไม่เจอช่องกรอกในหน้าหลักทันที (อาจอยู่ใน Iframe หรือเน็ตช้า)", style="yellow")
-                    console.print(f"      🔗 URL ขณะที่หาไม่เจอ: {self.driver.current_url}", style="dim")
-
-                # --- 🛠️ Core Logic: ฟังก์ชันสำหรับกรอก (Log แน่นเหมือนเดิม) ---
-                def attempt_fill_form(context_name="Main Page"):
-                    # Credentials
-                    credentials = {
-                        "login-form-username": MY_USERNAME,
-                        "login-form-password": MY_PASSWORD
-                    }
-                    
-                    # Check ว่าเจอ Input ไหมใน Context นี้
-                    try:
-                        self.driver.find_element(By.ID, "login-form-username")
-                        console.print(f"      👀 พบฟอร์ม Login ที่: [bold blue]{context_name}[/]", style="dim")
-                    except:
-                        return False # ไม่เจอ Input ในหน้านี้/iframe นี้
-
-                    for field_id, value in credentials.items():
-                        filled_success = False
-                        elem = self.driver.find_element(By.ID, field_id)
-                        console.print(f"      👉 กำลังจัดการช่อง: [cyan]{field_id}[/]", style="dim")
-
-                        # --- PHASE 1: Standard Interaction (ลองคลิกธรรมดา 2 ครั้งตามสั่ง) ---
-                        for i in range(2):
-                            try:
-                                # console.print(f"         ⏳ ลองแบบปกติ (Standard) รอบที่ {i+1}...", style="dim")
-                                elem.click()
-                                elem.clear()
-                                elem.send_keys(value)
-                                if elem.get_attribute('value') == value:
-                                    console.print(f"         ✅ กรอกแบบปกติสำเร็จ (Standard Attempt {i+1})", style="green")
-                                    filled_success = True
-                                    break
-                            except: 
-                                time.sleep(0.5)
-                        
-                        if filled_success: continue # ไป Field ถัดไป
-
-                        # --- PHASE 2: Ultimate Stealth (ถ้าแบบปกติไม่ผ่าน) ---
-                        console.print(f"         ⚠️ แบบปกติไม่ได้ผล... เปิดโหมด [bold red]Ultimate Stealth[/]", style="yellow")
-                        
-                        # Helper: Human Type
-                        def human_type(element, text):
-                            element.click()
-                            element.send_keys(Keys.CONTROL + "a")
-                            element.send_keys(Keys.DELETE)
-                            time.sleep(random.uniform(0.1, 0.3))
-                            for char in text:
-                                element.send_keys(char)
-                                time.sleep(random.uniform(0.04, 0.1))
-
-                        # Helper: JS Force
-                        def js_force_fill(elem_id, value):
-                            self.driver.execute_script(f"document.getElementById('{elem_id}').value = '{value}';")
-
-                        methods = ["Human Typing", "JS Force Fill"]
-                        for method in methods:
-                            try:
-                                if method == "Human Typing": human_type(elem, value)
-                                elif method == "JS Force Fill": js_force_fill(field_id, value)
-                                
-                                # ตรวจสอบผล
-                                if elem.get_attribute('value') == value:
-                                    console.print(f"         ✅ กรอกสำเร็จ (Method: {method})", style="green")
-                                    filled_success = True
-                                    break
-                                else:
-                                    console.print(f"         ⚠️ {method} ไม่ติด... ลองวิธีต่อไป", style="dim")
-                            except: pass
-                        
-                        if not filled_success: 
-                            console.print(f"         ❌ กรอก {field_id} ล้มเหลวทุกวิธี", style="bold red")
-                            return False # ล้มเหลวใน Field นี้
-                    
-                    return True # กรอกครบทุก Field
-
-                # --- 🚀 RUN STEP 4: Main Logic ---
-                form_filled = False
-                
-                # 1. ลองหาในหน้าหลักก่อน
-                if attempt_fill_form("Main Page"):
-                    form_filled = True
-                
-                # 2. ถ้าไม่เจอ ให้มุดหาใน Iframe (Iframe Support อย่างสมบูรณ์)
+                    self.driver.switch_to.default_content() # กลับสู่โลกความจริง
                 else:
-                    console.print("      ⚠️ ไม่เจอฟอร์มหน้าหลัก... เริ่มสแกน Iframes...", style="yellow")
-                    iframes = self.driver.find_elements(By.TAG_NAME, "iframe")
-                    if iframes:
-                        console.print(f"      👀 เจอ {len(iframes)} Iframes กำลังตรวจสอบ...", style="dim")
-                        for index, frame in enumerate(iframes):
-                            try:
-                                self.driver.switch_to.default_content() # Reset
-                                self.driver.switch_to.frame(frame)
-                                if attempt_fill_form(f"Iframe #{index+1}"):
-                                    console.print(f"      🎉 เจอและกรอกใน Iframe #{index+1} สำเร็จ!", style="bold green")
-                                    form_filled = True
-                                    break
-                            except: continue
-                        self.driver.switch_to.default_content() # กลับสู่โลกความจริง
+                    console.print("      ❌ ไม่พบ Iframe ในหน้านี้", style="red")
+
+            if not form_filled:
+                # Log ก่อนตาย
+                console.print(f"      ☠️ FAILED at URL: {self.driver.current_url}", style="bold red")
+                raise Exception("หาช่องกรอกไม่เจอทั้งหน้าหลักและ Iframe")
+
+            # --- 🔄 Click Login Button (Robust Loop) ---
+            console.print("      👉 กำลังจะกดปุ่ม Login...", style="dim")
+            clicked_success = False
+            click_methods = ["Direct Click", "JS Click", "Enter Key"]
+
+            for method in click_methods:
+                try:
+                    kill_blockers()
+                    if method == "Direct Click":
+                        self.driver.find_element(By.ID, "login_company").click()
+                    elif method == "JS Click":
+                        self.driver.execute_script("document.getElementById('login_company').click()")
+                    elif method == "Enter Key":
+                        self.driver.find_element(By.ID, "login-form-password").send_keys(Keys.ENTER)
+                    
+                    time.sleep(2)
+                    if "auth" not in self.driver.current_url and "login" not in self.driver.current_url:
+                        console.print(f"      🚀 Login Triggered! (Method: {method})", style="bold green")
+                        clicked_success = True
+                        break
                     else:
-                        console.print("      ❌ ไม่พบ Iframe ในหน้านี้", style="red")
-
-                if not form_filled:
-                    # Log ก่อนตาย
-                    console.print(f"      ☠️ FAILED at URL: {self.driver.current_url}", style="bold red")
-                    raise Exception("หาช่องกรอกไม่เจอทั้งหน้าหลักและ Iframe")
-
-                # --- 🔄 Click Login Button (Robust Loop) ---
-                console.print("      👉 กำลังจะกดปุ่ม Login...", style="dim")
-                clicked_success = False
-                click_methods = ["Direct Click", "JS Click", "Enter Key"]
-
-                for method in click_methods:
-                    try:
-                        kill_blockers()
-                        if method == "Direct Click":
-                            self.driver.find_element(By.ID, "login_company").click()
-                        elif method == "JS Click":
-                            self.driver.execute_script("document.getElementById('login_company').click()")
-                        elif method == "Enter Key":
-                            self.driver.find_element(By.ID, "login-form-password").send_keys(Keys.ENTER)
-                        
-                        time.sleep(2)
-                        if "auth" not in self.driver.current_url and "login" not in self.driver.current_url:
-                            console.print(f"      🚀 Login Triggered! (Method: {method})", style="bold green")
-                            clicked_success = True
-                            break
-                        else:
-                            console.print(f"      ⚠️ {method} กดแล้วนิ่ง... ลองวิธีต่อไป", style="dim")
-                    except Exception as e:
-                        console.print(f"      ❌ {method} Error: {e}", style="dim")
-                        
-                # ==============================================================================
-                # 5️⃣ STEP 5: ตรวจสอบผลลัพธ์
-                # ==============================================================================
-                console.print("   5️⃣  ตรวจสอบผลลัพธ์...", style="dim")
-                
-                try:
-                    WebDriverWait(self.driver, 15).until(
-                        lambda d: "auth.jobthai.com" not in d.current_url and "login" not in d.current_url
-                    )
-                except: pass
-
-                curr_url = self.driver.current_url.lower()
-                
-                is_auth_page = "auth.jobthai.com" in curr_url or "login" in curr_url
-                is_success_page = "employer/dashboard" in curr_url or "findresume" in curr_url or ("resume" in curr_url and not is_auth_page)
-
-                if is_success_page and not is_auth_page:
-                    console.print(f"🎉 Login สำเร็จ! (URL: {curr_url})", style="bold green")
-                    return True
-                else:
-                    error_msg = "หาสาเหตุไม่พบ"
-                    try:
-                        error_elem = self.driver.execute_script("""
-                            return document.querySelector('.text-danger, .error-message, .alert-danger, .ant-form-item-explain-error')?.innerText;
-                        """)
-                        if error_elem: error_msg = error_elem.strip()
-                    except: pass
+                        console.print(f"      ⚠️ {method} กดแล้วนิ่ง... ลองวิธีต่อไป", style="dim")
+                except Exception as e:
+                    console.print(f"      ❌ {method} Error: {e}", style="dim")
                     
-                    console.print(f"      ⚠️ ยังติดอยู่หน้า Login (URL: {curr_url})", style="bold red")
-                    console.print(f"      💬 Alert: [white on red]{error_msg}[/]")
-                    raise Exception(f"Login Failed - Stuck at {curr_url}")
+            # ==============================================================================
+            # 5️⃣ STEP 5: ตรวจสอบผลลัพธ์
+            # ==============================================================================
+            console.print("   5️⃣  ตรวจสอบผลลัพธ์...", style="dim")
+            
+            try:
+                WebDriverWait(self.driver, 15).until(
+                    lambda d: "auth.jobthai.com" not in d.current_url and "login" not in d.current_url
+                )
+            except: pass
 
-            except Exception as e:
-                console.print(f"\n[bold red]❌ ขั้นตอนล้มเหลว![/]")
-                console.print(f"   สาเหตุ: {e}")
-                timestamp = datetime.datetime.now().strftime("%H%M%S")
-                err_img = f"error_step1_{timestamp}.png"
-                self.driver.save_screenshot(err_img)
-                console.print(f"   📸 ดูภาพหลักฐานได้ที่: [yellow]{err_img}[/]\n")
+            curr_url = self.driver.current_url.lower()
+            
+            is_auth_page = "auth.jobthai.com" in curr_url or "login" in curr_url
+            is_success_page = "employer/dashboard" in curr_url or "findresume" in curr_url or ("resume" in curr_url and not is_auth_page)
 
-        console.print("🚫 หมดความพยายาม -> ใช้ Cookie สำรอง", style="bold red")
-        return self.login_with_cookie()
+            if is_success_page and not is_auth_page:
+                console.print(f"🎉 Login สำเร็จ! (URL: {curr_url})", style="bold green")
+                return True
+            else:
+                error_msg = "หาสาเหตุไม่พบ"
+                try:
+                    error_elem = self.driver.execute_script("""
+                        return document.querySelector('.text-danger, .error-message, .alert-danger, .ant-form-item-explain-error')?.innerText;
+                    """)
+                    if error_elem: error_msg = error_elem.strip()
+                except: pass
+                
+                console.print(f"      ⚠️ ยังติดอยู่หน้า Login (URL: {curr_url})", style="bold red")
+                console.print(f"      💬 Alert: [white on red]{error_msg}[/]")
+                raise Exception(f"Login Failed - Stuck at {curr_url}")
+
+        except Exception as e:
+            console.print(f"\n[bold red]❌ ขั้นตอนล้มเหลว![/]")
+            console.print(f"   สาเหตุ: {e}")
+            timestamp = datetime.datetime.now().strftime("%H%M%S")
+            err_img = f"error_step1_{timestamp}.png"
+            self.driver.save_screenshot(err_img)
+            console.print(f"   📸 ดูภาพหลักฐานได้ที่: [yellow]{err_img}[/]\n")
+
+            console.print("🚫 หมดความพยายาม -> ใช้ Cookie สำรอง", style="bold red")
+            return self.login_with_cookie()
         
     def login_with_cookie(self):
         cookies_env = os.getenv("COOKIES_JSON")
