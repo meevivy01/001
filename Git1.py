@@ -444,89 +444,102 @@ class JobThaiRowScraper:
                     raise Exception("หาปุ่ม 'หาคน' ไม่เจอ หรือกดไม่ได้")
 
 
-                # ==============================================================================
+               # ==============================================================================
                 # 4️⃣ STEP 4: กรอกข้อมูล & กดปุ่ม (Ultimate Stealth & Robust Mode)
                 # ==============================================================================
                 console.print("   4️⃣  เริ่มกระบวนการกรอกรหัส (Ultimate Mode)...", style="dim")
                 kill_blockers()
 
-                # รอให้ Input มา
-                try:
-                    WebDriverWait(self.driver, 20).until(EC.presence_of_element_located((By.ID, "login-form-username")))
-                except:
-                    console.print("      ⚠️ หาช่อง username ไม่เจอ (จะพยายามต่อ)", style="yellow")
+                # --- 🛠️ Helper: ฟังก์ชันหา Element แบบหลายทางเลือก (Smart Search) ---
+                def find_input_element(driver, strategies):
+                    for by_mechanism, selector in strategies:
+                        try:
+                            # รอแค่ 2 วิพอ เพราะจะวนหาหลายแบบ
+                            elem = WebDriverWait(driver, 2).until(EC.visibility_of_element_located((by_mechanism, selector)))
+                            return elem, f"{by_mechanism}:{selector}"
+                        except: continue
+                    return None, None
 
-                # --- 🛠️ Helper: Human Typing Simulation ---
-                def human_type(element, text):
-                    element.click()
-                    # สุ่ม Clear ข้อมูล (Ctrl+A -> Del หรือ .clear())
-                    element.send_keys(Keys.CONTROL + "a")
-                    element.send_keys(Keys.DELETE)
-                    time.sleep(random.uniform(0.1, 0.3))
-                    
-                    for char in text:
-                        element.send_keys(char)
-                        time.sleep(random.uniform(0.04, 0.15)) # พิมพ์เร็วบ้างช้าบ้างแบบคน
-                
-                # --- 🛠️ Helper: JS React/Event Hack (ท่าไม้ตาย) ---
-                def js_force_fill(elem_id, value):
-                    return self.driver.execute_script("""
-                        var element = document.getElementById(arguments[0]);
-                        var value = arguments[1];
-                        if (!element) return false;
-                        
-                        var lastValue = element.value;
-                        element.value = value;
-                        var event = new Event('input', { bubbles: true });
-                        var tracker = element._valueTracker;
-                        if (tracker) { tracker.setValue(lastValue); }
-                        element.dispatchEvent(event);
-                        element.dispatchEvent(new Event('change', { bubbles: true }));
-                        element.dispatchEvent(new Event('blur', { bubbles: true }));
-                        return true;
-                    """, elem_id, value)
-
-                # --- 🔄 LOOP 1: กรอก Username & Password (Learning Loop) ---
-                credentials = {
-                    "login-form-username": MY_USERNAME,
-                    "login-form-password": MY_PASSWORD
-                }
-                
-                for field_id, value in credentials.items():
-                    filled_success = False
+                # --- 🛠️ Helper: ฟังก์ชันกรอกข้อมูลแบบ Robust (Human -> JS) ---
+                def robust_fill(driver, element, text, field_name):
                     methods = ["Human Typing", "JS Force Fill", "Raw SendKeys"]
-                    
                     for method in methods:
                         try:
-                            elem = self.driver.find_element(By.ID, field_id)
-                            
-                            # ลองวิธีที่ 1: พิมพ์แบบคน (Stealth)
                             if method == "Human Typing":
-                                human_type(elem, value)
+                                element.click()
+                                element.send_keys(Keys.CONTROL + "a")
+                                element.send_keys(Keys.DELETE)
+                                time.sleep(random.uniform(0.1, 0.3))
+                                for char in text:
+                                    element.send_keys(char)
+                                    time.sleep(random.uniform(0.04, 0.15))
                             
-                            # ลองวิธีที่ 2: ยิง JS (Robust)
                             elif method == "JS Force Fill":
-                                js_force_fill(field_id, value)
-                            
-                            # ลองวิธีที่ 3: ดิบๆ (Fallback)
-                            elif method == "Raw SendKeys":
-                                elem.send_keys(value)
+                                driver.execute_script("""
+                                    arguments[0].value = arguments[1];
+                                    arguments[0].dispatchEvent(new Event('input', { bubbles: true }));
+                                    arguments[0].dispatchEvent(new Event('change', { bubbles: true }));
+                                    arguments[0].dispatchEvent(new Event('blur', { bubbles: true }));
+                                """, element, text)
 
-                            # 🧐 ตรวจสอบผลงาน (Self-Correction)
-                            current_val = elem.get_attribute('value')
-                            if current_val == value:
-                                console.print(f"      ✅ กรอก {field_id} สำเร็จ (Method: {method})", style="green")
-                                filled_success = True
-                                break # หยุด loop method ถ้าสำเร็จ
-                            else:
-                                console.print(f"      ⚠️ {method} ไม่ติด... ลองวิธีต่อไป", style="dim")
+                            elif method == "Raw SendKeys":
+                                element.send_keys(text)
+
+                            # ตรวจสอบผลลัพธ์
+                            if element.get_attribute('value') == text:
+                                console.print(f"      ✅ กรอก {field_name} สำเร็จ ({method})", style="green")
+                                return True
                         except: pass
                         time.sleep(0.5)
                     
-                    if not filled_success:
-                        raise Exception(f"กรอก {field_id} ไม่สำเร็จทุกวิธี")
+                    console.print(f"      ❌ กรอก {field_name} ไม่สำเร็จทุกวิธี", style="red")
+                    return False
 
-                # --- 🔄 LOOP 2: กดปุ่ม Login (Learning Loop) ---
+                # --- กำหนดกลยุทธ์การหาช่อง (Strategies) ---
+                user_strategies = [
+                    (By.ID, "login-form-username"),           # 1. ID เดิม (แม่นสุด)
+                    (By.NAME, "username"),                    # 2. หาด้วย Name
+                    (By.CSS_SELECTOR, "input[type='text']"),  # 3. หา input text ตัวแรก
+                    (By.CSS_SELECTOR, "input[type='email']"), # 4. หา input email
+                    (By.XPATH, "//input[@placeholder='Username']") # 5. หาจาก Placeholder
+                ]
+                pass_strategies = [
+                    (By.ID, "login-form-password"),
+                    (By.NAME, "password"),
+                    (By.CSS_SELECTOR, "input[type='password']")
+                ]
+
+                # --- 🔍 Phase 1: ค้นหาช่อง Username ---
+                user_elem, user_method = find_input_element(self.driver, user_strategies)
+                
+                # 🚨 ถ้าหาไม่เจอ -> ลอง Refresh หน้าจอ 1 ครั้ง (เผื่อหน้าขาว/โหลดไม่เสร็จ)
+                if not user_elem:
+                    console.print("      ⚠️ ไม่พบช่อง Username -> ลอง Refresh หน้าจอ...", style="yellow")
+                    self.driver.refresh()
+                    self.wait_for_page_load()
+                    kill_blockers()
+                    time.sleep(3)
+                    user_elem, user_method = find_input_element(self.driver, user_strategies)
+
+                # 🚨 ถ้ายังไม่เจออีก -> ยอมแพ้ทันที (เพื่อไปใช้ Cookie)
+                if not user_elem:
+                    raise Exception("❌ CRITICAL: หน้าเว็บไม่มีช่องกรอกข้อมูล (Web Layout Changed or Blank Page)")
+
+                console.print(f"      ✅ พบช่อง User ด้วย: {user_method}", style="dim")
+
+                # --- 🔍 Phase 2: ค้นหาช่อง Password ---
+                pass_elem, pass_method = find_input_element(self.driver, pass_strategies)
+                if not pass_elem:
+                    raise Exception("❌ CRITICAL: เจอช่อง User แต่ไม่เจอช่อง Password")
+
+                # --- ⌨️ Phase 3: เริ่มกรอกข้อมูล ---
+                if not robust_fill(self.driver, user_elem, MY_USERNAME, "Username"):
+                    raise Exception("กรอก Username ไม่เข้า")
+                
+                if not robust_fill(self.driver, pass_elem, MY_PASSWORD, "Password"):
+                    raise Exception("กรอก Password ไม่เข้า")
+
+                # --- 👆 Phase 4: กดปุ่ม Login ---
                 console.print("      👉 กำลังจะกด Login...", style="dim")
                 clicked_success = False
                 click_methods = ["ActionChains Offset", "Direct Click", "JS Click", "Enter Key"]
@@ -534,37 +547,27 @@ class JobThaiRowScraper:
                 for method in click_methods:
                     try:
                         kill_blockers()
-                        
-                        # วิธีที่ 1: ขยับเมาส์ไปกด (Stealth)
                         if method == "ActionChains Offset":
                             btn = self.driver.find_element(By.ID, "login_company")
-                            actions = ActionChains(self.driver)
-                            actions.move_to_element(btn).move_by_offset(1, 1).click().perform() # ขยับนิดนึงไม่ให้กลางเป๊ะ
-                        
-                        # วิธีที่ 2: กดตรงๆ
+                            ActionChains(self.driver).move_to_element(btn).move_by_offset(1, 1).click().perform()
                         elif method == "Direct Click":
                             self.driver.find_element(By.ID, "login_company").click()
-                        
-                        # วิธีที่ 3: JS Click (Force)
                         elif method == "JS Click":
                             self.driver.execute_script("document.getElementById('login_company').click()")
-                            
-                        # วิธีที่ 4: กด Enter ที่ช่องรหัส (Natural)
                         elif method == "Enter Key":
-                            self.driver.find_element(By.ID, "login-form-password").send_keys(Keys.ENTER)
+                            pass_elem.send_keys(Keys.ENTER)
 
-                        # เช็คว่าเว็บตอบสนองไหม (URL เปลี่ยน หรือ Loading ขึ้น)
                         time.sleep(2)
+                        # เช็คว่า URL เปลี่ยน หรือ Loading ขึ้นไหม
                         if "auth" not in self.driver.current_url or "login" not in self.driver.current_url:
                             console.print(f"      🚀 Login Triggered! (Method: {method})", style="bold green")
                             clicked_success = True
                             break
                         else:
-                            # ถ้า URL เดิม เช็ค Error Message
-                            err = self.driver.execute_script("return document.querySelector('.text-danger')?.innerText")
+                            # เช็ค Error บนเว็บ
+                            err = self.driver.execute_script("return document.querySelector('.text-danger, .error-message')?.innerText")
                             if err: raise Exception(f"Web Alert: {err}")
-                            console.print(f"      ⚠️ {method} กดแล้วนิ่ง... ลองวิธีต่อไป", style="dim")
-                            
+                            console.print(f"      ⚠️ {method} กดแล้วนิ่ง...", style="dim")
                     except Exception as e:
                         console.print(f"      ❌ {method} Error: {e}", style="dim")
                         continue
