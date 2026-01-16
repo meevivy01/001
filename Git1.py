@@ -471,6 +471,16 @@ class JobThaiRowScraper:
                 console.print("   4️⃣  เริ่มกระบวนการกรอกรหัส (Hybrid Mode)...", style="dim")
                 kill_blockers()
 
+                # 🛑 DEBUG: เช็คว่าตอนนี้ Driver อยู่ที่หน้าไหนแน่?
+                console.print(f"      📍 [bold magenta]Debug Location:[/]")
+                console.print(f"         🔗 URL: {self.driver.current_url}")
+                console.print(f"         📄 Title: {self.driver.title}")
+                console.print(f"         🪟 Tabs Open: {len(self.driver.window_handles)}")
+
+                # ถ้ามี Tab มากกว่า 1 ให้เตือน (เพราะ JobThai ชอบเด้ง Tab ใหม่)
+                if len(self.driver.window_handles) > 1:
+                    console.print("         ⚠️ พบ Tab มากกว่า 1! (อาจต้องสลับหน้าต่าง)", style="bold yellow")
+
                 # 🛑 FIX: เพิ่มการรอ (Wait) กลับเข้ามา เพื่อไม่ให้ข้ามไป Iframe เร็วเกินไป
                 console.print("      ⏳ รอให้ฟอร์ม Login ปรากฏ...", style="dim")
                 try:
@@ -478,7 +488,9 @@ class JobThaiRowScraper:
                         EC.presence_of_element_located((By.ID, "login-form-username"))
                     )
                 except:
+                    # Log เพิ่มตอนหาไม่เจอ
                     console.print("      ⚠️ ยังไม่เจอช่องกรอกในหน้าหลักทันที (อาจอยู่ใน Iframe หรือเน็ตช้า)", style="yellow")
+                    console.print(f"      🔗 URL ขณะที่หาไม่เจอ: {self.driver.current_url}", style="dim")
 
                 # --- 🛠️ Core Logic: ฟังก์ชันสำหรับกรอก (Log แน่นเหมือนเดิม) ---
                 def attempt_fill_form(context_name="Main Page"):
@@ -581,6 +593,8 @@ class JobThaiRowScraper:
                         console.print("      ❌ ไม่พบ Iframe ในหน้านี้", style="red")
 
                 if not form_filled:
+                    # Log ก่อนตาย
+                    console.print(f"      ☠️ FAILED at URL: {self.driver.current_url}", style="bold red")
                     raise Exception("หาช่องกรอกไม่เจอทั้งหน้าหลักและ Iframe")
 
                 # --- 🔄 Click Login Button (Robust Loop) ---
