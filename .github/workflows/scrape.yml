@@ -90,3 +90,12 @@ jobs:
             *.png
             *.json
           retention-days: 5 # เพิ่มวันเก็บไฟล์หน่อย เผื่อมาตรวจย้อนหลัง
+
+
+       - name: Upload Error Screenshots
+      if: failure()  # ทำงานเฉพาะตอนที่ Error เท่านั้น
+      uses: actions/upload-artifact@v4
+      with:
+        name: error-screenshots
+        path: "*.png"  # สั่งให้เก็บไฟล์ .png ทุกไฟล์
+        retention-days: 5    
