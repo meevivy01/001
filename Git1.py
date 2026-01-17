@@ -508,24 +508,21 @@ class JobThaiRowScraper:
             console.print("   4️⃣  เริ่มกระบวนการกรอกรหัส (Hybrid Mode)...", style="dim")
             kill_blockers()
 
-            # 🛑 DEBUG: เช็คว่าตอนนี้ Driver อยู่ที่หน้าไหนแน่?
+            # 🛑 DEBUG: เช็คว่าตอนนี้ Driver อยู่ที่หน้าไหนแน่? (โค้ดเดิมของคุณ)
             console.print(f"      📍 [bold magenta]Debug Location:[/]")
-            console.print(f"          🔗 URL: {self.driver.current_url}")
-            console.print(f"          📄 Title: {self.driver.title}")
-            console.print(f"          🪟 Tabs Open: {len(self.driver.window_handles)}")
+            console.print(f"           🔗 URL: {self.driver.current_url}")
+            console.print(f"           📄 Title: {self.driver.title}")
+            console.print(f"           🪟 Tabs Open: {len(self.driver.window_handles)}")
 
-            # ถ้ามี Tab มากกว่า 1 ให้เตือน (เพราะ JobThai ชอบเด้ง Tab ใหม่)
             if len(self.driver.window_handles) > 1:
-                console.print("          ⚠️ พบ Tab มากกว่า 1! (อาจต้องสลับหน้าต่าง)", style="bold yellow")
+                console.print("           ⚠️ พบ Tab มากกว่า 1! (อาจต้องสลับหน้าต่าง)", style="bold yellow")
 
-            # 🛑 FIX: เพิ่มการรอ (Wait) กลับเข้ามา เพื่อไม่ให้ข้ามไป Iframe เร็วเกินไป
             console.print("      ⏳ รอให้ฟอร์ม Login ปรากฏ...", style="dim")
             try:
                 WebDriverWait(self.driver, 60).until(
                     EC.presence_of_element_located((By.ID, "login-form-username"))
                 )
             except:
-                # Log เพิ่มตอนหาไม่เจอ
                 console.print("      ⚠️ ยังไม่เจอช่องกรอกในหน้าหลักทันที (อาจอยู่ใน Iframe หรือเน็ตช้า)", style="yellow")
                 console.print(f"      🔗 URL ขณะที่หาไม่เจอ: {self.driver.current_url}", style="dim")
 
@@ -537,22 +534,20 @@ class JobThaiRowScraper:
                     "login-form-password": MY_PASSWORD
                 }
                 
-                # Check ว่าเจอ Input ไหมใน Context นี้
                 try:
                     self.driver.find_element(By.ID, "login-form-username")
                     console.print(f"      👀 พบฟอร์ม Login ที่: [bold blue]{context_name}[/]", style="dim")
                 except:
-                    return False # ไม่เจอ Input ในหน้านี้/iframe นี้
+                    return False 
 
                 for field_id, value in credentials.items():
                     filled_success = False
                     elem = self.driver.find_element(By.ID, field_id)
                     console.print(f"      👉 กำลังจัดการช่อง: [cyan]{field_id}[/]", style="dim")
 
-                    # --- PHASE 1: Standard Interaction (ลองคลิกธรรมดา 2 ครั้งตามสั่ง) ---
+                    # --- PHASE 1: Standard Interaction ---
                     for i in range(3):
                         try:
-                            # console.print(f"          ⏳ ลองแบบปกติ (Standard) รอบที่ {i+1}...", style="dim")
                             elem.click()
                             elem.clear()
                             elem.send_keys(value)
@@ -563,12 +558,11 @@ class JobThaiRowScraper:
                         except: 
                             time.sleep(0.5)
                     
-                    if filled_success: continue # ไป Field ถัดไป
+                    if filled_success: continue 
 
-                    # --- PHASE 2: Ultimate Stealth (ถ้าแบบปกติไม่ผ่าน) ---
+                    # --- PHASE 2: Ultimate Stealth ---
                     console.print(f"          ⚠️ แบบปกติไม่ได้ผล... เปิดโหมด [bold red]Ultimate Stealth[/]", style="yellow")
                     
-                    # Helper: Human Type
                     def human_type(element, text):
                         element.click()
                         element.send_keys(Keys.CONTROL + "a")
@@ -578,7 +572,6 @@ class JobThaiRowScraper:
                             element.send_keys(char)
                             time.sleep(random.uniform(0.04, 0.1))
 
-                    # Helper: JS Force
                     def js_force_fill(elem_id, value):
                         self.driver.execute_script(f"document.getElementById('{elem_id}').value = '{value}';")
 
@@ -588,7 +581,6 @@ class JobThaiRowScraper:
                             if method == "Human Typing": human_type(elem, value)
                             elif method == "JS Force Fill": js_force_fill(field_id, value)
                             
-                            # ตรวจสอบผล
                             if elem.get_attribute('value') == value:
                                 console.print(f"          ✅ กรอกสำเร็จ (Method: {method})", style="green")
                                 filled_success = True
@@ -599,18 +591,15 @@ class JobThaiRowScraper:
                     
                     if not filled_success: 
                         console.print(f"          ❌ กรอก {field_id} ล้มเหลวทุกวิธี", style="bold red")
-                        return False # ล้มเหลวใน Field นี้
+                        return False 
                 
-                return True # กรอกครบทุก Field
+                return True 
 
             # --- 🚀 RUN STEP 4: Main Logic ---
             form_filled = False
             
-            # 1. ลองหาในหน้าหลักก่อน
             if attempt_fill_form("Main Page"):
                 form_filled = True
-            
-            # 2. ถ้าไม่เจอ ให้มุดหาใน Iframe (Iframe Support อย่างสมบูรณ์)
             else:
                 console.print("      ⚠️ ไม่เจอฟอร์มหน้าหลัก... เริ่มสแกน Iframes...", style="yellow")
                 iframes = self.driver.find_elements(By.TAG_NAME, "iframe")
@@ -618,23 +607,22 @@ class JobThaiRowScraper:
                     console.print(f"      👀 เจอ {len(iframes)} Iframes กำลังตรวจสอบ...", style="dim")
                     for index, frame in enumerate(iframes):
                         try:
-                            self.driver.switch_to.default_content() # Reset
+                            self.driver.switch_to.default_content() 
                             self.driver.switch_to.frame(frame)
                             if attempt_fill_form(f"Iframe #{index+1}"):
                                 console.print(f"      🎉 เจอและกรอกใน Iframe #{index+1} สำเร็จ!", style="bold green")
                                 form_filled = True
                                 break
                         except: continue
-                    self.driver.switch_to.default_content() # กลับสู่โลกความจริง
+                    self.driver.switch_to.default_content()
                 else:
                     console.print("      ❌ ไม่พบ Iframe ในหน้านี้", style="red")
 
             if not form_filled:
-                # Log ก่อนตาย
                 console.print(f"      ☠️ FAILED at URL: {self.driver.current_url}", style="bold red")
                 raise Exception("หาช่องกรอกไม่เจอทั้งหน้าหลักและ Iframe")
 
-            # --- 🔄 Click Login Button (Robust Loop) ---
+            # --- 🔄 Click Login Button ---
             console.print("      👉 กำลังจะกดปุ่ม Login...", style="dim")
             clicked_success = False
             click_methods = ["Direct Click", "JS Click", "Enter Key"]
@@ -643,7 +631,9 @@ class JobThaiRowScraper:
                 try:
                     kill_blockers()
                     if method == "Direct Click":
-                        self.driver.find_element(By.ID, "login_company").click()
+                        # 🛑 เพิ่มการหาปุ่ม Company โดยเฉพาะ
+                        try: self.driver.find_element(By.ID, "login_company").click()
+                        except: self.driver.find_element(By.ID, "login-resume").click() # เผื่อเป็นหน้า resume
                     elif method == "JS Click":
                         self.driver.execute_script("document.getElementById('login_company').click()")
                     elif method == "Enter Key":
