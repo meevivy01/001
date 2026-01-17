@@ -345,7 +345,7 @@ class JobThaiRowScraper:
     # ==============================================================================
     def step1_login(self):
         # 1. เริ่มจากลิงก์ฝั่งบริษัท (Employer) เพื่อให้ Server สร้าง Session สำหรับบริษัท
-        entry_point = "https://www.jobthai.com/th/employer/login"
+        entry_point = "https://www.jobthai.com/login?page=companies&l=th"
         
         console.rule(f"[bold cyan]🔐 Login Process (Company/Employer Mode)[/]")
         
