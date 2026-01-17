@@ -183,6 +183,8 @@ class JobThaiRowScraper:
         self.current_history_worksheet = None # เก็บหน้า Tab ประวัติปัจจุบัน
         # ✅ เรียกใช้ PDF Manager (ส่ง Key ชุดเดียวกับ Sheet)
         self.pdf_helper = PDFManager(G_SHEET_KEY_JSON)
+        # 🟢 เพิ่มตัวแปรเก็บความจำลิงก์ PDF ของวันนี้
+        self.daily_pdf_cache = {}
 
         try:
             if G_SHEET_KEY_JSON and G_SHEET_NAME:
@@ -194,6 +196,32 @@ class JobThaiRowScraper:
                 console.print(f"✅ เชื่อมต่อ Google Sheet หลักสำเร็จ", style="success")
         except Exception as e:
             console.print(f"❌ เชื่อมต่อ Google Sheet ไม่ได้: {e}", style="error")
+
+    # 🟢 เพิ่มฟังก์ชันใหม่สำหรับโหลดลิงก์ที่เคยอัปโหลดไปแล้ววันนี้
+    def load_daily_pdf_cache(self):
+        if not self.sh: return
+        today_str = datetime.datetime.now().strftime("%d-%m-%Y")
+        try:
+            ws = self.sh.worksheet(today_str)
+            all_rows = ws.get_all_values()
+            if len(all_rows) > 1:
+                header = all_rows[0]
+                try:
+                    id_idx = header.index("รหัสใบสมัคร")
+                    pdf_idx = header.index("Resume_PDF_Link")
+                    # โหลดข้อมูลเข้า Cache: { 'รหัส': 'ลิงก์' }
+                    for row in all_rows[1:]:
+                        if len(row) > max(id_idx, pdf_idx):
+                            c_id = str(row[id_idx]).strip()
+                            link = str(row[pdf_idx]).strip()
+                            if c_id and link:
+                                self.daily_pdf_cache[c_id] = link
+                    console.print(f"📦 โหลดความจำ PDF ของวันนี้สำเร็จ ({len(self.daily_pdf_cache)} รายการ)", style="cyan")
+                except ValueError:
+                    pass # ยังไม่มีคอลัมน์ PDF
+        except:
+            pass # ยังไม่มี Tab ของวันนี้
+            
 
     def get_history_tab_name(self, keyword):
         """ ค้นหากลุ่มของ Keyword เพื่อระบุชื่อ Tab ประวัติ """
@@ -1290,7 +1318,7 @@ class JobThaiRowScraper:
         # --- REORDER COLUMNS ---
         base_columns = [
             "Link", "Keyword", "รหัสใบสมัคร", "เคยทำบริษัทคู่แข่ง", "รูปภาพ", 
-            "อัพเดทล่าสุด", 
+            "อัพเดทล่าสุด", "Resume_PDF_Link",
             "ชื่อ", "นามสกุล", "อายุ", "เพศ", 
             "เบอร์โทร", "Email", "ที่อยู่", "แขวง", "เขต", "จังหวัดที่อยู่", "รหัสไปรษณีย์",
             "ตำแหน่งที่ต้องการสมัคร_1","ตำแหน่งที่ต้องการสมัคร_2","ตำแหน่งที่ต้องการสมัคร_3", 
@@ -1629,6 +1657,9 @@ class JobThaiRowScraper:
     def run(self):
         self.email_report_list = []
         if not self.step1_login(): return
+
+        # 🟢 1. โหลดความจำจาก Google Sheet ของวันนี้ก่อนเริ่มงาน
+        self.load_daily_pdf_cache()
         
         today = datetime.date.today()
         is_friday = (today.weekday() == 4)
@@ -1702,22 +1733,25 @@ class JobThaiRowScraper:
                                         need_pdf = True
 
                                     # --- เริ่มสร้าง PDF (ถ้าจำเป็น) ---
+                                    # 🟢 2. เช็คการสร้าง PDF โดยดูจากความจำรายวัน
                                     if need_pdf:
-                                        # 1. สั่งปริ้น
-                                        pdf_path = self.pdf_helper.save_page_as_pdf(self.driver, person_data['id'])
+                                        person_id = str(person_data['id'])
                                         
-                                        # 2. สั่งอัปโหลด
-                                        # 🟢 [แก้ไข] ดึงค่าจาก Secret แทนการใส่ตรงๆ
-                                        YOUR_DRIVE_FOLDER_ID = os.getenv("DRIVE_FOLDER_ID") 
-                                        
-                                        # (เช็คเพื่อความชัวร์ว่ามี ID มาจริง)
-                                        if not YOUR_DRIVE_FOLDER_ID:
-                                            print("⚠️ Error: ไม่พบ DRIVE_FOLDER_ID ใน Secrets")
-                                            pdf_link = ""
+                                        # ตรวจสอบว่าวันนี้ (ตั้งแต่เที่ยงคืน) เคยอัปโหลดคนนี้หรือยัง
+                                        if person_id in self.daily_pdf_cache:
+                                            pdf_link = self.daily_pdf_cache[person_id]
+                                            progress.console.print(f"   ♻️ ใช้วันเดิม: พบ PDF ของวันนี้แล้ว (ID: {person_id})", style="dim cyan")
                                         else:
-                                            pdf_link = self.pdf_helper.upload_to_drive(pdf_path, YOUR_DRIVE_FOLDER_ID)
+                                            pdf_path = self.pdf_helper.save_page_as_pdf(self.driver, person_id)
+                                            YOUR_DRIVE_FOLDER_ID = os.getenv("DRIVE_FOLDER_ID") 
+                                            
+                                            pdf_link = ""
+                                            if YOUR_DRIVE_FOLDER_ID:
+                                                pdf_link = self.pdf_helper.upload_to_drive(pdf_path, YOUR_DRIVE_FOLDER_ID)
+                                                if pdf_link:
+                                                    # เก็บเข้าความจำระหว่างรัน
+                                                    self.daily_pdf_cache[person_id] = pdf_link
                                         
-                                        # 3. ใส่ลิงก์ลงข้อมูล
                                         if pdf_link:
                                             person_data['Resume_PDF_Link'] = pdf_link
                                             d['Resume_PDF_Link'] = pdf_link
