@@ -345,7 +345,7 @@ class JobThaiRowScraper:
     # ==============================================================================
     def step1_login(self):
         # 1. เริ่มจากลิงก์สั้น
-        entry_point = "https://www.jobthai.com/login?page=companies&l=th"
+        entry_point = "https://www.jobthai.com/login?page=resumes&l=th"
         
         console.rule(f"[bold cyan]🔐 Login Process (Reconstruct Mode)[/]")
         
