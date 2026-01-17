@@ -1441,6 +1441,16 @@ class JobThaiRowScraper:
             s_max = person.get('salary_max', '-')
 
             # สร้างแถวในตาราง
+            # 🟢 [เพิ่มส่วนนี้] สร้างปุ่ม PDF (ถ้ามีลิงก์)
+            pdf_btn_html = ""
+            if person.get('Resume_PDF_Link'):
+                pdf_btn_html = f'''<br><br>
+                <a href="{person['Resume_PDF_Link']}" target="_blank" 
+                   style="background-color:#dc3545; color:white; padding:3px 8px; border-radius:4px; text-decoration:none; font-size:11px;">
+                   📄 PDF
+                </a>'''
+
+            # สร้างแถวในตาราง (เพิ่ม {pdf_btn_html} ลงไป)
             body_html += f"""
                 <tr>
                     <td style="text-align: center;">{img_html}</td>
@@ -1455,7 +1465,7 @@ class JobThaiRowScraper:
                     <td>{person['last_update']}</td>
                     <td style="text-align: center;">
                         <a href="{person['link']}" target="_blank" class="btn">เปิดดู</a>
-                    </td>
+                        {pdf_btn_html} </td>
                 </tr>
             """
             
@@ -1670,16 +1680,19 @@ class JobThaiRowScraper:
 
                                 # --- เริ่มสร้าง PDF (ถ้าจำเป็น) ---
                                 if need_pdf:
+
                                     # 1. สั่งปริ้น
                                     pdf_path = self.pdf_helper.save_page_as_pdf(self.driver, person_data['id'])
                                     
-                                    # 2. สั่งอัปโหลด (⚠️ อย่าลืมแก้ ID FOLDER ตรงนี้)
-                                    YOUR_DRIVE_FOLDER_ID = "ใส่_ID_FOLDER_GOOGLE_DRIVE_ของคุณ" 
-                                    pdf_link = self.pdf_helper.upload_to_drive(pdf_path, YOUR_DRIVE_FOLDER_ID)
+                                    # 2. สั่งอัปโหลด
+                                    # 🟢 [แก้ไข] ดึงค่าจาก Secret แทนการใส่ตรงๆ
+                                    YOUR_DRIVE_FOLDER_ID = os.getenv("DRIVE_FOLDER_ID") 
                                     
-                                    # 3. ใส่ลิงก์ลงข้อมูล
-                                    person_data['Resume_PDF_Link'] = pdf_link
-                                    d['Resume_PDF_Link'] = pdf_link
+                                    # (เช็คเพื่อความชัวร์ว่ามี ID มาจริง)
+                                    if not YOUR_DRIVE_FOLDER_ID:
+                                        print("⚠️ Error: ไม่พบ DRIVE_FOLDER_ID ใน Secrets")
+                                        
+                                    pdf_link = self.pdf_helper.upload_to_drive(pdf_path, YOUR_DRIVE_FOLDER_ID)
                                 
                                 # ==========================================
                                 # 🟢 ดำเนินการส่งเมล (Logic เดิม)
