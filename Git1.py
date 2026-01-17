@@ -1631,58 +1631,80 @@ class JobThaiRowScraper:
                                 self.total_profiles_viewed += 1 
                                 
                                 if d is not None:
-                                    d['Keyword'] = keyword
-                                    self.all_scraped_data.append(d)
+                                d['Keyword'] = keyword
+                                self.all_scraped_data.append(d)
+
+                                # ==========================================
+                                # 🟢 LOGIC ใหม่: ผูก PDF กับการส่งเมล
+                                # ==========================================
+                                
+                                # 1. คำนวณเงื่อนไข HOT (0-1 วัน)
+                                should_send_hot = False
+                                if days_diff <= 1:
+                                    should_send_hot = True
+                                    # เช็คประวัติ 1 วัน
+                                    if EMAIL_USE_HISTORY and person_data['id'] in self.current_history_data:
+                                        try:
+                                            last_notify = datetime.datetime.strptime(self.current_history_data[person_data['id']], "%Y-%m-%d").date()
+                                            if (today - last_notify).days < 1: should_send_hot = False 
+                                        except: pass
+
+                                # 2. คำนวณเงื่อนไข Batch (2-30 วัน)
+                                should_add_to_batch = False
+                                if days_diff <= 30:
+                                    should_add_to_batch = True
+                                    # เช็คประวัติ 7 วัน
+                                    if EMAIL_USE_HISTORY and person_data['id'] in self.current_history_data:
+                                        try:
+                                            last_notify = datetime.datetime.strptime(self.current_history_data[person_data['id']], "%Y-%m-%d").date()
+                                            if (today - last_notify).days < 7: should_add_to_batch = False
+                                        except: pass
+
+                                # 3. ตัดสินใจสร้าง PDF (Trigger)
+                                # PDF จะเกิดเมื่อ: (เป็นเคส HOT) หรือ (เป็นเคส Batch และ วันนี้เป็นวันศุกร์/รันมือ)
+                                need_pdf = False
+                                if should_send_hot:
+                                    need_pdf = True
+                                elif should_add_to_batch and (is_friday or is_manual_run):
+                                    need_pdf = True
+
+                                # --- เริ่มสร้าง PDF (ถ้าจำเป็น) ---
+                                if need_pdf:
+                                    # 1. สั่งปริ้น
+                                    pdf_path = self.pdf_helper.save_page_as_pdf(self.driver, person_data['id'])
                                     
-                                    # 🟢 [แก้ไข] 2. เปลี่ยนมาใช้ self.current_history_data (จาก Google Sheet)
-                                    should_add = False
-                                    if days_diff <= 30:
-                                        should_add = True
-                                        if EMAIL_USE_HISTORY and person_data['id'] in self.current_history_data:
-                                            try:
-                                                last_notify = datetime.datetime.strptime(self.current_history_data[person_data['id']], "%Y-%m-%d").date()
-                                                if (today - last_notify).days < 7: should_add = True
-                                            except: pass
-                                    if should_add: current_keyword_batch.append(person_data)
+                                    # 2. สั่งอัปโหลด (⚠️ อย่าลืมแก้ ID FOLDER ตรงนี้)
+                                    YOUR_DRIVE_FOLDER_ID = "ใส่_ID_FOLDER_GOOGLE_DRIVE_ของคุณ" 
+                                    pdf_link = self.pdf_helper.upload_to_drive(pdf_path, YOUR_DRIVE_FOLDER_ID)
+                                    
+                                    # 3. ใส่ลิงก์ลงข้อมูล
+                                    person_data['Resume_PDF_Link'] = pdf_link
+                                    d['Resume_PDF_Link'] = pdf_link
+                                
+                                # ==========================================
+                                # 🟢 ดำเนินการส่งเมล (Logic เดิม)
+                                # ==========================================
+                                
+                                # HOT: ส่งทันที
+                                if should_send_hot:
+                                    hot_subject = f"🔥 [HOT] พบผู้สมัครด่วน ({keyword}): {person_data['name']}"
+                                    progress.console.print(f"   🚨 พบผู้สมัคร HOT -> ส่งเมลทันที!", style="bold red")
+                                    self.send_single_email(hot_subject, [person_data], col_header="ประวัติบริษัท")
+                                    self.update_history_sheet(person_data['id'], str(today))
 
-                                    if days_diff <= 1:
-                                        should_hot = True
-                                        # 🟢 [แก้ไข] 3. เช็คประวัติ HOT จาก Google Sheet
-                                        if EMAIL_USE_HISTORY and person_data['id'] in self.current_history_data:
-                                             try:
-                                                  last_notify = datetime.datetime.strptime(self.current_history_data[person_data['id']], "%Y-%m-%d").date()
-                                                  if (today - last_notify).days < 1: should_hot = True              
-                                                  #False
-                                             except: pass
-                                        
-                                        if should_hot:
-                                            hot_subject = f"🔥 [HOT] พบผู้สมัครด่วน ({keyword}): {person_data['name']}"
-                                            progress.console.print(f"   🚨 พบผู้สมัคร HOT -> ส่งเมลทันที!", style="bold red")
-                                            self.send_single_email(hot_subject, [person_data], col_header="ประวัติบริษัท")
-                                            
-                                            # 🟢 [เพิ่ม] 4. บันทึกประวัติลง Google Sheet ทันที (เคส HOT)
-                                            self.update_history_sheet(person_data['id'], str(today))
+                                # Batch: เก็บเข้าตะกร้า (ถ้าเป็นวันศุกร์/รันมือ)
+                                if should_add_to_batch:
+                                    current_keyword_batch.append(person_data)
 
-                                    if days_diff > 30 and (is_friday or is_manual_run):
-                                         if current_keyword_batch:
-                                              progress.console.print(f"\n[bold green]📨 เจอคนเก่า ({days_diff} วัน) -> ถึงรอบส่งเมลสรุป ({len(current_keyword_batch)} คน)![/]")
-                                              self.send_batch_email(current_keyword_batch, keyword)
-                                              
-                                              # 🟢 [เพิ่ม] 5. บันทึกทุกคนใน Batch ลง Google Sheet
-                                              if EMAIL_USE_HISTORY:
-                                                   for p in current_keyword_batch: 
-                                                       self.update_history_sheet(p['id'], str(today))
-                                              current_keyword_batch = []
+                        # ... (จบ Loop ย่อย) ...
 
-                            except Exception as e: progress.console.print(f"[bold red]❌ Error Link {i+1}: {e}[/]")
-                            progress.advance(task_id)
-                
+                # จบ Loop ใหญ่ของ Keyword นี้ -> ส่ง Batch ถ้าเป็นวันศุกร์
                 if current_keyword_batch and (is_friday or is_manual_run):
-                    self.send_batch_email(current_keyword_batch, keyword)
-                    # 🟢 [เพิ่ม] 6. บันทึกทุกคนใน Batch สุดท้ายลง Google Sheet
-                    if EMAIL_USE_HISTORY:
-                         for p in current_keyword_batch: 
-                             self.update_history_sheet(p['id'], str(today))
+                     progress.console.print(f"\n[bold green]📨 วันศุกร์/Manual -> ส่งสรุป Batch ({len(current_keyword_batch)} คน)[/]")
+                     self.send_batch_email(current_keyword_batch, keyword)
+                     if EMAIL_USE_HISTORY:
+                          for p in current_keyword_batch: 
+                              self.update_history_sheet(p['id'], str(today))
 
             console.print("⏳ พัก 3 วินาที ก่อนคำต่อไป...", style="dim")
             time.sleep(3)
