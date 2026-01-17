@@ -1440,7 +1440,6 @@ class JobThaiRowScraper:
             s_min = person.get('salary_min', '-')
             s_max = person.get('salary_max', '-')
 
-            # สร้างแถวในตาราง
             # 🟢 [เพิ่มส่วนนี้] สร้างปุ่ม PDF (ถ้ามีลิงก์)
             pdf_btn_html = ""
             if person.get('Resume_PDF_Link'):
@@ -1465,7 +1464,8 @@ class JobThaiRowScraper:
                     <td>{person['last_update']}</td>
                     <td style="text-align: center;">
                         <a href="{person['link']}" target="_blank" class="btn">เปิดดู</a>
-                        {pdf_btn_html} </td>
+                        {pdf_btn_html} 
+                    </td>
                 </tr>
             """
             
