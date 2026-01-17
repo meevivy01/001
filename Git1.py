@@ -344,12 +344,12 @@ class JobThaiRowScraper:
     # 🔥 STEP 1: LOGIN (URL Reconstruction Mode - สร้าง URL ใหม่เอง)
     # ==============================================================================
     def step1_login(self):
-        # 1. เริ่มจากลิงก์สั้น
-        entry_point = "https://www.jobthai.com/login?page=resumes&l=th"
+        # 1. เริ่มจากลิงก์ฝั่งบริษัท (Employer) เพื่อให้ Server สร้าง Session สำหรับบริษัท
+        entry_point = "https://www.jobthai.com/th/employer/login"
         
-        console.rule(f"[bold cyan]🔐 Login Process (Reconstruct Mode)[/]")
+        console.rule(f"[bold cyan]🔐 Login Process (Company/Employer Mode)[/]")
         
-        # ฟังก์ชันกำจัดสิ่งกีดขวาง
+        # ฟังก์ชันกำจัดสิ่งกีดขวาง (ประกาศไว้บนสุด)
         def kill_blockers():
             try:
                 self.driver.execute_script("document.querySelectorAll('#close-button, .cookie-consent, [class*=\"pdpa\"], [class*=\"popup\"], .modal-backdrop').forEach(b => b.remove());")
@@ -357,7 +357,7 @@ class JobThaiRowScraper:
 
         try:
             # ==============================================================================
-            # 2️⃣ STEP 2: เข้าหน้าเว็บ -> ดึงค่าทีละตัว -> ประกอบ URL ใหม่
+            # 2️⃣ STEP 2: เข้าหน้าเว็บ -> ดึงค่าทีละตัว -> ประกอบ URL ใหม่ (Company Version)
             # ==============================================================================
             console.print(f"   2️⃣  เริ่มเข้าสู่ระบบจาก: [yellow]{entry_point}[/]", style="dim")
             self.driver.get(entry_point)
@@ -365,13 +365,13 @@ class JobThaiRowScraper:
             console.print("      ⏳ รอเข้าสู่หน้า Auth...", style="dim")
             WebDriverWait(self.driver, 20).until(EC.url_contains("auth.jobthai.com"))
 
-            console.print("      🔧 กำลังแยกชิ้นส่วน URL และประกอบใหม่...", style="dim")
+            console.print("      🔧 กำลังแยกชิ้นส่วน URL และประกอบร่างเป็น 'Company Login'...", style="dim")
             
             reconstructed_url = ""
             
             for i in range(10): # ให้เวลา 10 วินาที
                 try:
-                    # 1. ใช้ JS ดึงค่า Parameter ทีละตัว (วิธีนี้ไม่มีทางติด Enter มาแน่นอน)
+                    # 1. ใช้ JS ดึงค่า Parameter ทีละตัว
                     params = self.driver.execute_script("""
                         const urlParams = new URLSearchParams(window.location.search);
                         return {
@@ -388,12 +388,11 @@ class JobThaiRowScraper:
                     if params['client_id'] and params['redirect_uri']:
                         console.print(f"      ✅ ได้ค่า Client ID: {params['client_id'][:10]}...", style="green")
                         
-                        # 3. ประกอบร่าง URL ใหม่เองใน Python (สะอาด 100%)
-                        # โครงสร้าง: base_url + params + type=resume
-                        base_url = "https://auth.jobthai.com/resumes/login"
+                        # 3. ประกอบร่าง URL ใหม่ (เป้าหมายคือ Company Login)
+                        # 🛑 จุดแก้: Base URL เป็น companies
+                        base_url = "https://auth.jobthai.com/companies/login"
                         
-                        # สร้าง Query String แบบ Manual เพื่อความชัวร์
-                        # การทำแบบนี้จะไม่มีทางมี \n หลุดเข้ามาได้
+                        # สร้าง Query String แบบ Manual
                         query_parts = [
                             f"client_id={params['client_id']}",
                             f"response_type={params.get('response_type', 'code')}", 
@@ -401,16 +400,16 @@ class JobThaiRowScraper:
                             f"scope={params.get('scope', 'login')}",
                             f"l={params.get('l', 'th')}",
                             f"state={params.get('state', '')}",
-                            "type=resume" # 🎯 พระเอกของเรา ใส่ตรงนี้เลย
+                            "type=company" # 🛑 จุดแก้: เปลี่ยนเป็น company
                         ]
                         
                         # รวมร่างด้วย &
                         reconstructed_url = f"{base_url}?{'&'.join(query_parts)}"
                         
-                        # ลบช่องว่างที่อาจจะเผลอติดมา (กันเหนียว)
+                        # ลบช่องว่างที่อาจจะเผลอติดมา
                         reconstructed_url = reconstructed_url.replace(" ", "").replace("\n", "").replace("\r", "")
                         
-                        console.print(f"      ✨ สร้าง URL ใหม่สำเร็จ (Length: {len(reconstructed_url)})", style="bold cyan")
+                        console.print(f"      ✨ สร้าง URL บริษัทสำเร็จ (Length: {len(reconstructed_url)})", style="bold cyan")
                         break
                 except Exception as e:
                     console.print(f"      ⚠️ กำลังพยายามดึงค่า... ({e})", style="dim")
@@ -420,16 +419,17 @@ class JobThaiRowScraper:
             if not reconstructed_url:
                 raise Exception("ไม่สามารถดึงค่าพารามิเตอร์เพื่อสร้าง URL ได้")
 
-            # 4. สั่งโหลดหน้าเว็บด้วย URL ที่เราสร้างเอง
-            console.print(f"      🔄 Reload ด้วย URL ที่ประกอบใหม่...", style="bold cyan")
+            # 4. สั่งโหลดหน้าเว็บด้วย URL ใหม่
+            console.print(f"      🔄 Reload ไปยังหน้า Login บริษัท...", style="bold cyan")
             self.driver.get(reconstructed_url)
             self.wait_for_page_load()
             time.sleep(5)
-            console.print(f"      ✅ URL พร้อมใช้งาน", style="green")
+            console.print(f"      ✅ URL พร้อมใช้งาน (Company Login)", style="green")
+            
             # ==============================================================================
             # 3️⃣ STEP 3: กดเลือก "หาคน" (Employer Tab)
             # ==============================================================================
-            console.print("   3️⃣  กำลังหาปุ่ม 'หาคน' (Employer Tab)...", style="dim")
+            '''console.print("   3️⃣  กำลังหาปุ่ม 'หาคน' (Employer Tab)...", style="dim")
             kill_blockers()
             
             # 1. รอให้ปุ่มปรากฏ (เหมือนเดิม)
@@ -496,7 +496,7 @@ class JobThaiRowScraper:
                     except: continue
             
             if not clicked_tab:
-                raise Exception("หาปุ่ม 'หาคน' ไม่เจอ หรือกดไม่ได้")
+                raise Exception("หาปุ่ม 'หาคน' ไม่เจอ หรือกดไม่ได้")'''
 
 
             # ==============================================================================
