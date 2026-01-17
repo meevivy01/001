@@ -518,7 +518,7 @@ class JobThaiRowScraper:
             # 🛑 FIX: เพิ่มการรอ (Wait) กลับเข้ามา เพื่อไม่ให้ข้ามไป Iframe เร็วเกินไป
             console.print("      ⏳ รอให้ฟอร์ม Login ปรากฏ...", style="dim")
             try:
-                WebDriverWait(self.driver, 15).until(
+                WebDriverWait(self.driver, 60).until(
                     EC.presence_of_element_located((By.ID, "login-form-username"))
                 )
             except:
@@ -547,7 +547,7 @@ class JobThaiRowScraper:
                     console.print(f"      👉 กำลังจัดการช่อง: [cyan]{field_id}[/]", style="dim")
 
                     # --- PHASE 1: Standard Interaction (ลองคลิกธรรมดา 2 ครั้งตามสั่ง) ---
-                    for i in range(2):
+                    for i in range(3):
                         try:
                             # console.print(f"          ⏳ ลองแบบปกติ (Standard) รอบที่ {i+1}...", style="dim")
                             elem.click()
@@ -646,7 +646,7 @@ class JobThaiRowScraper:
                     elif method == "Enter Key":
                         self.driver.find_element(By.ID, "login-form-password").send_keys(Keys.ENTER)
                     
-                    time.sleep(2)
+                    time.sleep(3)
                     if "auth" not in self.driver.current_url and "login" not in self.driver.current_url:
                         console.print(f"      🚀 Login Triggered! (Method: {method})", style="bold green")
                         clicked_success = True
