@@ -27,6 +27,7 @@ import logging
 from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, BarColumn, TextColumn, TimeRemainingColumn, TimeElapsedColumn, TaskProgressColumn
 from rich.theme import Theme
+from pdf_manager import PDFManager  # ✅ เพิ่มบรรทัดนี้
 
 # --- SETUP & CONFIG ---
 try:
@@ -180,6 +181,8 @@ class JobThaiRowScraper:
         self.sh = None  # ตัวแปรเก็บไฟล์ Spreadsheet หลัก
         self.current_history_data = {} # เก็บประวัติของกลุ่ม Keyword ที่กำลังรัน
         self.current_history_worksheet = None # เก็บหน้า Tab ประวัติปัจจุบัน
+        # ✅ เรียกใช้ PDF Manager (ส่ง Key ชุดเดียวกับ Sheet)
+        self.pdf_helper = PDFManager(G_SHEET_KEY_JSON)
 
         try:
             if G_SHEET_KEY_JSON and G_SHEET_NAME:
