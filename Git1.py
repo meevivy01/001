@@ -375,17 +375,17 @@ class JobThaiRowScraper:
     # 🔥 STEP 1: LOGIN (URL Reconstruction Mode - สร้าง URL ใหม่เอง)
     # ==============================================================================
     def step1_login(self):
-        # ต้องใช้ library นี้ช่วยประกอบ URL ให้ถูกต้อง
         import urllib.parse
         
-        # กำหนดจำนวนรอบที่จะ Retry
         MAX_RETRIES = 3
+        # รหัสสำรอง (เผื่อวันไหนดูดจากหน้าเว็บไม่ได้)
+        BACKUP_CLIENT_ID = "NlnJk4E3pLR2TBGu930OQXJAiy9mJ7sWpZ8w8RAq"
         
         for attempt in range(1, MAX_RETRIES + 1):
-            console.rule(f"[bold cyan]🔐 Login Process (Attempt {attempt}/{MAX_RETRIES}) - Company Mode[/]")
+            console.rule(f"[bold cyan]🔐 Login Process (Attempt {attempt}/{MAX_RETRIES}) - Hybrid Mode[/]")
             
-            # 1. เริ่มจากลิงก์ฝั่งบริษัท
-            entry_point = "https://www.jobthai.com/login?page=companies&l=th"
+            # เริ่มต้นที่หน้า Employer (เพื่อให้ระบบสร้าง Link ของบริษัทให้เรา)
+            entry_point = "https://www.jobthai.com/th/employer/login"
             
             def kill_blockers():
                 try:
@@ -393,91 +393,82 @@ class JobThaiRowScraper:
                 except: pass
 
             try:
-                # ==============================================================================
-                # 2️⃣ STEP 2: เข้าหน้าเว็บ -> ดึงค่าทีละตัว -> ประกอบ URL ใหม่
-                # ==============================================================================
-                # [DEBUG LOG] ก่อนเข้า Entry Point
-                console.print(f"   📍 [Before Entry] URL: {self.driver.current_url}", style="dim")
-                
+                # 1. เข้าหน้าเว็บเพื่อขอ URL ล่าสุดของวันนี้
                 console.print(f"   2️⃣  เริ่มเข้าสู่ระบบจาก: [yellow]{entry_point}[/]", style="dim")
                 self.driver.get(entry_point)
                 
                 console.print("      ⏳ รอเข้าสู่หน้า Auth...", style="dim")
                 WebDriverWait(self.driver, 20).until(EC.url_contains("auth.jobthai.com"))
 
-                # [DEBUG LOG] หลังเข้าหน้า Auth
-                console.print(f"   📍 [Current Page] Title: {self.driver.title} | URL: {self.driver.current_url}", style="magenta")
+                console.print("      🔧 กำลังแยกชิ้นส่วน URL (Dynamic Extract)...", style="dim")
+                
+                # 2. ดูดค่าพารามิเตอร์สดๆ จากหน้าเว็บ (รองรับการเปลี่ยนรหัส)
+                params = self.driver.execute_script("""
+                    const urlParams = new URLSearchParams(window.location.search);
+                    return {
+                        client_id: urlParams.get('client_id'),
+                        redirect_uri: urlParams.get('redirect_uri'),
+                        state: urlParams.get('state'),
+                        scope: urlParams.get('scope'),
+                        l: urlParams.get('l')
+                    };
+                """)
+                
+                # 3. ตรวจสอบค่าที่ได้มา (Logic: Dynamic First -> Fallback Second)
+                target_client_id = params.get('client_id')
+                used_method = "Dynamic (จากหน้าเว็บ)"
+                
+                if not target_client_id:
+                    # ถ้าหาไม่เจอ ใช้ตัวสำรอง
+                    target_client_id = BACKUP_CLIENT_ID
+                    used_method = "Fallback (รหัสสำรอง)"
+                    console.print("      ⚠️ หา Client ID ไม่เจอ -> ใช้รหัสสำรองแทน", style="yellow")
 
-                console.print("      🔧 กำลังแยกชิ้นส่วน URL และประกอบร่างเป็น 'Company Login'...", style="dim")
-                
-                reconstructed_url = ""
-                
-                for i in range(10): # ให้เวลา 10 วินาที
-                    try:
-                        params = self.driver.execute_script("""
-                            const urlParams = new URLSearchParams(window.location.search);
-                            return {
-                                client_id: urlParams.get('client_id'),
-                                redirect_uri: urlParams.get('redirect_uri'),
-                                state: urlParams.get('state'),
-                                scope: urlParams.get('scope'),
-                                l: urlParams.get('l'),
-                                response_type: urlParams.get('response_type')
-                            };
-                        """)
-                        
-                        if params['client_id'] and params['redirect_uri']:
-                            console.print(f"      ✅ ได้ค่า Client ID: {params['client_id'][:10]}...", style="green")
-                            
-                            # 🛑 FIX: ใช้ urllib สร้าง URL
-                            clean_params = {
-                                'client_id': params['client_id'].strip(),
-                                'response_type': params.get('response_type', 'code').strip(),
-                                'redirect_uri': params['redirect_uri'].strip(),
-                                'scope': params.get('scope', 'login').strip(),
-                                'l': params.get('l', 'th').strip(),
-                                'state': params.get('state', '').strip(),
-                                'type': 'company' # บังคับ Company Mode
-                            }
-                            
-                            base_url = "https://auth.jobthai.com/companies/login"
-                            query_string = urllib.parse.urlencode(clean_params)
-                            reconstructed_url = f"{base_url}?{query_string}"
-                            
-                            console.print(f"      ✨ สร้าง URL บริษัทสำเร็จ (Length: {len(reconstructed_url)})", style="bold cyan")
-                            break
-                    except Exception as e:
-                        console.print(f"      ⚠️ กำลังพยายามดึงค่า... ({e})", style="dim")
-                    
-                    time.sleep(1)
-                
-                if not reconstructed_url or "client_id=" not in reconstructed_url:
-                    # [SNAPSHOT] กรณีสร้าง URL ไม่ได้
-                    timestamp = datetime.datetime.now().strftime("%H%M%S")
-                    self.driver.save_screenshot(f"error_url_build_{timestamp}.png")
-                    raise Exception("ไม่สามารถสร้าง URL ที่สมบูรณ์ได้ (Missing Parameters)")
+                # ถ้า Redirect URI หาย ให้ใช้ค่ามาตรฐาน
+                target_redirect = params.get('redirect_uri')
+                if not target_redirect: target_redirect = "https://www.jobthai.com/callback"
 
-                # 4. สั่งโหลดหน้าเว็บด้วย URL ใหม่
+                # 4. ประกอบร่าง URL ใหม่ (บังคับ type=company เพื่อแก้บั๊ก Redirect ผิดหน้า)
+                clean_params = {
+                    'client_id': target_client_id,
+                    'response_type': 'code',
+                    'redirect_uri': target_redirect,
+                    'scope': params.get('scope') or 'login',
+                    'l': 'th',
+                    'state': params.get('state') or '', # ค่า state นี้จะเปลี่ยนทุกวัน/ทุก session ซึ่งเราดึงมาสดๆ แล้ว
+                    'type': 'company' # 🛑 กุญแจสำคัญ: บังคับเป็น company เสมอ
+                }
+                
+                # ใช้ urllib สร้าง URL (ปลอดภัย 100% ไม่พังเพราะอักขระพิเศษ)
+                base_url = "https://auth.jobthai.com/companies/login"
+                query_string = urllib.parse.urlencode(clean_params)
+                reconstructed_url = f"{base_url}?{query_string}"
+                
+                console.print(f"      ✨ สร้าง URL สำเร็จ ({used_method})", style="bold cyan")
+                # console.print(f"      🔗 URL: {reconstructed_url}", style="dim") # เปิดบรรทัดนี้ถ้าอยากเห็น URL เต็ม
+
+                # 5. สั่งโหลดหน้าเว็บด้วย URL ที่เราคุมกำเนิดแล้ว
                 console.print(f"      🔄 Reload ไปยังหน้า Login บริษัท...", style="bold cyan")
-                
-                # [DEBUG LOG] ก่อนโหลด URL ใหม่
-                console.print(f"      👉 กำลังจะไปที่: {reconstructed_url}", style="dim")
-                
                 self.driver.get(reconstructed_url)
                 self.wait_for_page_load()
                 time.sleep(5)
                 
-                # [DEBUG LOG] หลังโหลด URL ใหม่เสร็จ
-                console.print(f"      📍 [After Reload] Title: {self.driver.title} | URL: {self.driver.current_url}", style="magenta")
+                # 6. เช็คว่ายังอยู่ผิดหน้าไหม (Title ต้องไม่ใช่ผู้สมัครงาน)
+                page_title = self.driver.title.lower()
+                if "ผู้สมัครงาน" in page_title or "candidate" in page_title:
+                     console.print("      ❌ ระบบยังพาไปหน้าผู้สมัครงาน (Redirect ผิด)", style="bold red")
+                     # ถ้าเป็นรอบแรกแล้วพัง รอบหน้าลองบังคับใช้ ID สำรองดูเผื่อ ID ที่ดูดมามันเพี้ยน
+                     if attempt == 1: 
+                         BACKUP_CLIENT_ID = "NlnJk4E3pLR2TBGu930OQXJAiy9mJ7sWpZ8w8RAq" # ย้ำค่าเดิม
+                         console.print("      💡 รอบหน้าจะลองบังคับใช้ ID สำรอง", style="yellow")
+                     raise Exception("Redirect ผิดหน้า (Candidate Page Detected)")
                 
-                # เช็คว่า Error 422 ไหม
-                if "problem" in self.driver.title.lower() or "error" in self.driver.title.lower():
+                if "problem" in page_title or "error" in page_title:
                      timestamp = datetime.datetime.now().strftime("%H%M%S")
                      self.driver.save_screenshot(f"error_422_{timestamp}.png")
-                     console.print(f"      📸 เจอหน้า Error! บันทึกภาพที่: error_422_{timestamp}.png", style="red")
-                     raise Exception("เข้าหน้า Login ไม่สำเร็จ (เจอหน้า Error 422)")
+                     raise Exception("เจอหน้า Error 422/Problem Loading Page")
 
-                console.print(f"      ✅ URL พร้อมใช้งาน (Company Login)", style="green")
+                console.print(f"      ✅ URL พร้อมใช้งาน (Company Login Validated)", style="green")
                 
                 # ==============================================================================
                 # 3️⃣ STEP 3: กดเลือก "หาคน" (Employer Tab) -> (เก็บ Code เดิมที่ Comment ไว้)
