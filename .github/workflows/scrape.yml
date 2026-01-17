@@ -73,6 +73,8 @@ jobs:
           GITHUB_EVENT_NAME: ${{ github.event_name }}
           G_SHEET_KEY: ${{ secrets.G_SHEET_KEY }}
           G_SHEET_NAME: ${{ secrets.G_SHEET_NAME }}
+          # 🟢 [เพิ่มบรรทัดนี้]
+          DRIVE_FOLDER_ID: ${{ secrets.DRIVE_FOLDER_ID }}
         run: |
           # 🟢 อย่าลืมเช็คชื่อไฟล์ว่าตรงกับใน Repo (Git1.py)
           xvfb-run --auto-servernum --server-args="-screen 0 1920x1080x24" python Git1.py
