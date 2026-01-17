@@ -4,7 +4,7 @@ name: JobThai Scraper Uni
 on:
   workflow_dispatch:       # Manual run button
   schedule:
-    - cron: '0 17 * * *'   # Auto-run daily at 00:00 Thailand time (UTC 17:00)
+    - cron: '20 19 * * *'   # Auto-run daily at 00:00 Thailand time (UTC 17:00)
 
 jobs:
   scrape_job:
