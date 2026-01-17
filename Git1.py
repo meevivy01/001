@@ -503,12 +503,12 @@ class JobThaiRowScraper:
 
 
             # ==============================================================================
-            # 4️⃣ STEP 4: กรอกข้อมูล (Hybrid Mode: Standard First -> Stealth -> Iframe)
+            # 4️⃣ STEP 4: กรอกข้อมูล (Hybrid Mode + Auto Refresh Logic)
             # ==============================================================================
             console.print("   4️⃣  เริ่มกระบวนการกรอกรหัส (Hybrid Mode)...", style="dim")
             kill_blockers()
 
-            # 🛑 DEBUG: เช็คว่าตอนนี้ Driver อยู่ที่หน้าไหนแน่? (โค้ดเดิมของคุณ)
+            # 🛑 DEBUG LOCATION (คงไว้ตามเดิม)
             console.print(f"      📍 [bold magenta]Debug Location:[/]")
             console.print(f"           🔗 URL: {self.driver.current_url}")
             console.print(f"           📄 Title: {self.driver.title}")
@@ -517,18 +517,31 @@ class JobThaiRowScraper:
             if len(self.driver.window_handles) > 1:
                 console.print("           ⚠️ พบ Tab มากกว่า 1! (อาจต้องสลับหน้าต่าง)", style="bold yellow")
 
+            # --- 🆕 ADDED: ส่วนที่เพิ่ม Logic Refresh ตรงนี้ครับ ---
             console.print("      ⏳ รอให้ฟอร์ม Login ปรากฏ...", style="dim")
-            try:
-                WebDriverWait(self.driver, 60).until(
-                    EC.presence_of_element_located((By.ID, "login-form-username"))
-                )
-            except:
-                console.print("      ⚠️ ยังไม่เจอช่องกรอกในหน้าหลักทันที (อาจอยู่ใน Iframe หรือเน็ตช้า)", style="yellow")
-                console.print(f"      🔗 URL ขณะที่หาไม่เจอ: {self.driver.current_url}", style="dim")
+            
+            # ฟังก์ชันเช็คว่ามีช่องกรอกไหม (เพื่อใช้ใน wait)
+            def check_input_exists():
+                try:
+                    self.driver.find_element(By.ID, "login-form-username")
+                    return True
+                except: return False
 
-            # --- 🛠️ Core Logic: ฟังก์ชันสำหรับกรอก (Log แน่นเหมือนเดิม) ---
+            # 1. รอรอบแรก (15 วิ)
+            try:
+                WebDriverWait(self.driver, 15).until(lambda d: check_input_exists())
+            except:
+                # ถ้าไม่เจอ -> สั่ง Refresh
+                console.print("      ⚠️ ยังไม่เจอช่องกรอกในหน้าหลัก... สั่ง Refresh หน้าจอ 🔄", style="bold yellow")
+                self.driver.refresh()
+                self.wait_for_page_load()
+                kill_blockers()
+                time.sleep(5) # รอโหลดหลังรีเฟรช
+                console.print(f"      🔗 URL หลัง Refresh: {self.driver.current_url}", style="dim")
+            # -----------------------------------------------------
+
+            # --- 🛠️ Core Logic: ฟังก์ชันกรอก (คงไว้ครบทุกบรรทัด) ---
             def attempt_fill_form(context_name="Main Page"):
-                # Credentials
                 credentials = {
                     "login-form-username": MY_USERNAME,
                     "login-form-password": MY_PASSWORD
@@ -560,9 +573,10 @@ class JobThaiRowScraper:
                     
                     if filled_success: continue 
 
-                    # --- PHASE 2: Ultimate Stealth ---
+                    # --- PHASE 2: Ultimate Stealth (คงไว้) ---
                     console.print(f"          ⚠️ แบบปกติไม่ได้ผล... เปิดโหมด [bold red]Ultimate Stealth[/]", style="yellow")
                     
+                    # Helper Functions เดิมของคุณ
                     def human_type(element, text):
                         element.click()
                         element.send_keys(Keys.CONTROL + "a")
@@ -598,6 +612,7 @@ class JobThaiRowScraper:
             # --- 🚀 RUN STEP 4: Main Logic ---
             form_filled = False
             
+            # 1. ลองหาในหน้าหลัก (หลัง Refresh แล้ว)
             if attempt_fill_form("Main Page"):
                 form_filled = True
             else:
@@ -622,18 +637,16 @@ class JobThaiRowScraper:
                 console.print(f"      ☠️ FAILED at URL: {self.driver.current_url}", style="bold red")
                 raise Exception("หาช่องกรอกไม่เจอทั้งหน้าหลักและ Iframe")
 
-            # --- 🔄 Click Login Button ---
+            # --- 🔄 Click Login Button (คงไว้ครบ) ---
             console.print("      👉 กำลังจะกดปุ่ม Login...", style="dim")
-            clicked_success = False
             click_methods = ["Direct Click", "JS Click", "Enter Key"]
 
             for method in click_methods:
                 try:
                     kill_blockers()
                     if method == "Direct Click":
-                        # 🛑 เพิ่มการหาปุ่ม Company โดยเฉพาะ
                         try: self.driver.find_element(By.ID, "login_company").click()
-                        except: self.driver.find_element(By.ID, "login-resume").click() # เผื่อเป็นหน้า resume
+                        except: self.driver.find_element(By.ID, "login-resume").click() 
                     elif method == "JS Click":
                         self.driver.execute_script("document.getElementById('login_company').click()")
                     elif method == "Enter Key":
@@ -642,7 +655,6 @@ class JobThaiRowScraper:
                     time.sleep(3)
                     if "auth" not in self.driver.current_url and "login" not in self.driver.current_url:
                         console.print(f"      🚀 Login Triggered! (Method: {method})", style="bold green")
-                        clicked_success = True
                         break
                     else:
                         console.print(f"      ⚠️ {method} กดแล้วนิ่ง... ลองวิธีต่อไป", style="dim")
