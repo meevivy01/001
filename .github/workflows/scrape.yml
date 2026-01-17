@@ -38,8 +38,7 @@ jobs:
       - name: Install Xvfb and Dependencies
         run: |
           sudo apt-get update
-          # ✅ เพิ่ม fonts-thai-tlwg และ fonts-sarabun ตรงนี้
-          sudo apt-get install -y xvfb libnss3 libasound2t64 libgbm1 libu2f-udev fonts-liberation fonts-thai-tlwg fonts-sarabun
+          sudo apt-get install -y xvfb libnss3 libasound2t64 libgbm1 libu2f-udev fonts-liberation fonts-thai-tlwg
 
       # 5. Install Python libraries
       - name: Install dependencies
