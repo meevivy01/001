@@ -1463,12 +1463,13 @@ class JobThaiRowScraper:
             s_max = person.get('salary_max', '-')
 
             # 🟢 [เพิ่มส่วนนี้] สร้างปุ่ม PDF (ถ้ามีลิงก์)
+            # [แก้ไขส่วนนี้] สร้างปุ่ม PDF สไตล์โมเดิร์น
             pdf_btn_html = ""
             if person.get('Resume_PDF_Link'):
                 pdf_btn_html = f'''<br><br>
                 <a href="{person['Resume_PDF_Link']}" target="_blank" 
-                   style="background-color:#dc3545; color:white; padding:3px 8px; border-radius:4px; text-decoration:none; font-size:11px;">
-                   📄 PDF
+                   style="background-color: #e74c3c; color: #ffffff; padding: 8px 15px; border-radius: 30px; text-decoration: none; font-size: 13px; font-weight: bold; display: inline-block; border: 1px solid #c0392b; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                   📄 ดูไฟล์ PDF
                 </a>'''
 
             # สร้างแถวในตาราง (เพิ่ม {pdf_btn_html} ลงไป)
