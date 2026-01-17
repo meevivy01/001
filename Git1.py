@@ -424,7 +424,7 @@ class JobThaiRowScraper:
             console.print(f"      🔄 Reload ด้วย URL ที่ประกอบใหม่...", style="bold cyan")
             self.driver.get(reconstructed_url)
             self.wait_for_page_load()
-            time.sleep(3)
+            time.sleep(5)
             console.print(f"      ✅ URL พร้อมใช้งาน", style="green")
             # ==============================================================================
             # 3️⃣ STEP 3: กดเลือก "หาคน" (Employer Tab)
@@ -434,7 +434,7 @@ class JobThaiRowScraper:
             
             # 1. รอให้ปุ่มปรากฏ (เหมือนเดิม)
             try:
-                WebDriverWait(self.driver, 10).until(
+                WebDriverWait(self.driver, 30).until(
                     EC.visibility_of_element_located((By.XPATH, "//*[@id='login_tab_employer']"))
                 )
             except: 
