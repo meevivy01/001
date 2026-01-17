@@ -54,16 +54,32 @@ class PDFManager:
             return None
 
     def upload_to_drive(self, filepath, folder_id):
-        if not self.service or not folder_id: return ""
+        if not self.service or not folder_id: 
+            return ""
         drive_link = ""
         try:
             file_metadata = {'name': os.path.basename(filepath), 'parents': [folder_id]}
             media = MediaFileUpload(filepath, mimetype='application/pdf')
+            
+            # 1. อัปโหลดไฟล์ตามปกติ
             file = self.service.files().create(
-                body=file_metadata, media_body=media, fields='id, webViewLink'
+                body=file_metadata, 
+                media_body=media, 
+                fields='id, webViewLink'
             ).execute()
+            
+            # 2. ✅ เพิ่มส่วนนี้: ตั้งค่าสิทธิ์ให้ "ใครที่มีลิงก์ก็ดูได้"
+            self.service.permissions().create(
+                fileId=file.get('id'),
+                body={
+                    'role': 'reader',   # สิทธิ์ในการอ่าน/ดู
+                    'type': 'anyone'    # สำหรับทุกคนที่มีลิงก์
+                }
+            ).execute()
+
             console.print(f"☁️ อัปโหลด PDF แล้ว (ID: {file.get('id')})", style="bold green")
             drive_link = file.get('webViewLink')
+            
         except Exception as e:
             console.print(f"❌ Upload Error: {e}", style="red")
         finally:
