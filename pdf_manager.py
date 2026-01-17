@@ -1,7 +1,7 @@
 import os
 import base64
 import json
-from google.oauth2.service_account import Credentials
+from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
 from rich.console import Console
@@ -9,17 +9,28 @@ from rich.console import Console
 console = Console()
 
 class PDFManager:
-    def __init__(self, key_json_str):
+    def __init__(self, key_json_str=None): 
+        # รับค่า key_json_str ไว้เฉยๆ เพื่อให้เข้ากับ Git1.py แต่จะดึงค่าจาก OAuth แทน
         self.service = None
         try:
-            if key_json_str:
-                creds_dict = json.loads(key_json_str)
-                scopes = ['https://www.googleapis.com/auth/drive']
-                creds = Credentials.from_service_account_info(creds_dict, scopes=scopes)
+            # ดึงค่าจาก GitHub Secrets (Environment Variables)
+            client_id = os.getenv("DRIVE_CLIENT_ID")
+            client_secret = os.getenv("DRIVE_CLIENT_SECRET")
+            refresh_token = os.getenv("DRIVE_REFRESH_TOKEN")
+
+            if client_id and client_secret and refresh_token:
+                # สร้าง Credential จาก Refresh Token เพื่อล็อกอินในนามของคุณ
+                creds = Credentials(
+                    None, 
+                    refresh_token=refresh_token,
+                    token_uri="https://oauth2.googleapis.com/token",
+                    client_id=client_id,
+                    client_secret=client_secret
+                )
                 self.service = build('drive', 'v3', credentials=creds)
-                console.print("✅ เชื่อมต่อ Google Drive Service สำเร็จ", style="green")
+                console.print("✅ เชื่อมต่อ Google Drive (OAuth Mode) สำเร็จ", style="green")
             else:
-                console.print("⚠️ ไม่พบ Google Service Account Key", style="yellow")
+                console.print("⚠️ ไม่พบ OAuth Credentials ใน Secret", style="yellow")
         except Exception as e:
             console.print(f"❌ Google Drive Init Error: {e}", style="red")
 
@@ -29,7 +40,6 @@ class PDFManager:
         filename = f"Resume_{person_id}.pdf"
         filepath = os.path.join(save_folder, filename)
         try:
-            # สั่ง Chrome ให้ Print ผ่าน DevTools Protocol
             print_options = {
                 'landscape': False, 'displayHeaderFooter': False,
                 'printBackground': True, 'preferCSSPageSize': True,
@@ -57,7 +67,6 @@ class PDFManager:
         except Exception as e:
             console.print(f"❌ Upload Error: {e}", style="red")
         finally:
-            # ลบไฟล์ในเครื่องทิ้งเสมอ
             if os.path.exists(filepath):
                 try: os.remove(filepath)
                 except: pass
