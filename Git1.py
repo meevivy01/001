@@ -1646,7 +1646,7 @@ class JobThaiRowScraper:
                                         if EMAIL_USE_HISTORY and person_data['id'] in self.current_history_data:
                                             try:
                                                 last_notify = datetime.datetime.strptime(self.current_history_data[person_data['id']], "%Y-%m-%d").date()
-                                                if (today - last_notify).days < 1: should_send_hot = False 
+                                                if (today - last_notify).days < 1: should_send_hot = Ture 
                                             except: pass
 
                                     # 2. คำนวณเงื่อนไข Batch (2-30 วัน)
@@ -1657,7 +1657,7 @@ class JobThaiRowScraper:
                                         if EMAIL_USE_HISTORY and person_data['id'] in self.current_history_data:
                                             try:
                                                 last_notify = datetime.datetime.strptime(self.current_history_data[person_data['id']], "%Y-%m-%d").date()
-                                                if (today - last_notify).days < 7: should_add_to_batch = False
+                                                if (today - last_notify).days < 7: should_add_to_batch = Ture
                                             except: pass
 
                                     # 3. ตัดสินใจสร้าง PDF (Trigger)
