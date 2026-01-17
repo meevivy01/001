@@ -74,6 +74,10 @@ jobs:
           G_SHEET_NAME: ${{ secrets.G_SHEET_NAME }}
           # 🟢 [เพิ่มบรรทัดนี้]
           DRIVE_FOLDER_ID: ${{ secrets.DRIVE_FOLDER_ID }}
+          # 🟢 เพิ่ม 3 บรรทัดนี้
+          DRIVE_CLIENT_ID: ${{ secrets.DRIVE_CLIENT_ID }}
+          DRIVE_CLIENT_SECRET: ${{ secrets.DRIVE_CLIENT_SECRET }}
+          DRIVE_REFRESH_TOKEN: ${{ secrets.DRIVE_REFRESH_TOKEN }}
         run: |
           # 🟢 อย่าลืมเช็คชื่อไฟล์ว่าตรงกับใน Repo (Git1.py)
           xvfb-run --auto-servernum --server-args="-screen 0 1920x1080x24" python Git1.py
