@@ -1579,8 +1579,12 @@ class JobThaiRowScraper:
             console.print(f"❌ Google Sheets Error: {e}", style="error")
 
     def run(self):
+        import sys # อย่าลืม import sys ถ้ายังไม่มี (หรือใช้ที่มีอยู่แล้ว)
         self.email_report_list = []
-        if not self.step1_login(): return
+        # ถ้าล็อกอินไม่ผ่าน ให้สั่งโปรแกรมระเบิดตัวเอง (Exit 1) เพื่อให้ GitHub รู้ว่า Failed
+        if not self.step1_login(): 
+            console.print("❌ Login Failed -> Force Exit for Retry", style="bold red")
+            sys.exit(1)
 
         # 🟢 1. โหลดความจำจาก Google Sheet ของวันนี้ก่อนเริ่มงาน
         self.load_daily_pdf_cache()
