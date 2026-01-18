@@ -376,15 +376,11 @@ class JobThaiRowScraper:
     # ==============================================================================
     def step1_login(self):
         # 1. 🛑 FIX สำคัญ: บังคับขนาดจอและ User-Agent เพื่อแก้หน้าเว็บเพี้ยน
+        # 1. เทคนิคแก้จอเพี้ยนบน Linux Headless (ใช้ CDP Command โดยตรง)
         try:
-            # ตั้งขนาดจอให้ใหญ่ระดับ Full HD (สำคัญมาก!)
-            self.driver.set_window_size(1920, 1080)
-            
-            # หลอกเว็บว่าเป็น Chrome บน Windows 10 (Desktop)
-            self.driver.execute_cdp_cmd('Network.setUserAgentOverride', {
-                "userAgent": 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+            self.driver.execute_cdp_cmd('Emulation.setDeviceMetricsOverride', {
+                'width': 1920, 'height': 1080, 'deviceScaleFactor': 1, 'mobile': False
             })
-            console.print("      🔧 Fix Browser: Set 1920x1080 & Fake Desktop UA", style="dim")
         except: pass
 
         MAX_RETRIES = 2
