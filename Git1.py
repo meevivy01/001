@@ -160,6 +160,10 @@ class JobThaiRowScraper:
         opts.add_argument("--disable-popup-blocking")
         opts.add_argument("--disable-gpu") 
         opts.add_argument("--lang=th-TH")
+        # ✅ [เพิ่ม] ปิดการแจ้งเตือน Automation เพื่อความเนียน
+        opts.add_argument("--disable-blink-features=AutomationControlled") 
+        opts.add_experimental_option("excludeSwitches", ["enable-automation"])
+        opts.add_experimental_option('useAutomationExtension', False)
         
         # ✅ ใช้ Static User Agent
         my_static_ua = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36"
