@@ -107,11 +107,12 @@ jobs:
 
       # ... (Steps ก่อนหน้า) ...
 
-      # 9. Auto-Retry on Failure (เพิ่มส่วนนี้)
+      # 9. Auto-Retry on Failure
       - name: Trigger Retry on Failure
-        if: failure()  # ทำงานเฉพาะเมื่อขั้นตอนก่อนหน้าพัง (เช่น Python exit 1)
+        if: failure()
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }} # ใช้ Token มาตรฐานของ GitHub
+          # 🛑 เปลี่ยนตรงนี้! จาก secrets.GITHUB_TOKEN เป็น secrets.PERSONAL_ACCESS_TOKEN
+          GH_TOKEN: ${{ secrets.PERSONAL_ACCESS_TOKEN }} 
         run: |
           echo "⚠️ Job failed! Triggering a new run..."
           gh workflow run scrape.yml
