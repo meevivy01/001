@@ -103,3 +103,15 @@ jobs:
           name: error-screenshots
           path: "*.png"  # สั่งให้เก็บไฟล์ .png ทุกไฟล์
           retention-days: 5    
+
+
+      # ... (Steps ก่อนหน้า) ...
+
+      # 9. Auto-Retry on Failure (เพิ่มส่วนนี้)
+      - name: Trigger Retry on Failure
+        if: failure()  # ทำงานเฉพาะเมื่อขั้นตอนก่อนหน้าพัง (เช่น Python exit 1)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }} # ใช้ Token มาตรฐานของ GitHub
+        run: |
+          echo "⚠️ Job failed! Triggering a new run..."
+          gh workflow run scrape.yml
