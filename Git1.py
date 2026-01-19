@@ -1544,14 +1544,14 @@ class JobThaiRowScraper:
             # -----------------------------------------------------
             # 🔴 ตัวการที่ทำให้มีไฟล์แนบโผล่มา (ปิดมันซะ!)
             # -----------------------------------------------------
-            # for img_data in images_to_attach:
-            #     try:
-            #         with open(img_data['path'], 'rb') as f:
-            #             msg_img = MIMEImage(f.read())  <-- นี่คือคำสั่งสร้างไฟล์แนบ
-            #             msg_img.add_header('Content-ID', f"<{img_data['cid']}>")
-            #             msg_img.add_header('Content-Disposition', 'inline', filename=os.path.basename(img_data['path']))
-            #             msg_root.attach(msg_img)       <-- นี่คือคำสั่งยัดไฟล์ใส่อีเมล
-            #     except: pass
+            for img_data in images_to_attach:
+                try:
+                    with open(img_data['path'], 'rb') as f:
+                        msg_img = MIMEImage(f.read())  <-- นี่คือคำสั่งสร้างไฟล์แนบ
+                        msg_img.add_header('Content-ID', f"<{img_data['cid']}>")
+                        msg_img.add_header('Content-Disposition', 'inline', filename=os.path.basename(img_data['path']))
+                        msg_root.attach(msg_img)       <-- นี่คือคำสั่งยัดไฟล์ใส่อีเมล
+                except: pass
 
             # วนลูปส่งให้ผู้รับทุกคน
             for rec in receiver_list:
