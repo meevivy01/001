@@ -378,15 +378,8 @@ class JobThaiRowScraper:
     # 🔥 STEP 1: LOGIN (URL Reconstruction Mode - สร้าง URL ใหม่เอง)
     # ==============================================================================
     def step1_login(self):
-        # 1. 🛑 FIX สำคัญ: บังคับขนาดจอและ User-Agent เพื่อแก้หน้าเว็บเพี้ยน
-        # 1. เทคนิคแก้จอเพี้ยนบน Linux Headless (ใช้ CDP Command โดยตรง)
-        try:
-            self.driver.execute_cdp_cmd('Emulation.setDeviceMetricsOverride', {
-                'width': 1920, 'height': 1080, 'deviceScaleFactor': 1, 'mobile': False
-            })
-        except: pass
-
-        MAX_RETRIES = 2
+        # กำหนดจำนวนรอบที่จะ Retry (วนเริ่มใหม่ตั้งแต่ Step 1)
+        MAX_RETRIES = 3
         
         for attempt in range(1, MAX_RETRIES + 1):
             # แสดง Header ว่าเป็นรอบที่เท่าไหร่
@@ -547,80 +540,169 @@ class JobThaiRowScraper:
                 # ==============================================================================
                 # 4️⃣ STEP 4: กรอกข้อมูล (Hybrid Mode + Retry Logic)
                 # ==============================================================================
-                console.print("   4️⃣  กำลังฝังข้อมูลเข้าระบบ (JS Injection)...", style="dim")
+                console.print("   4️⃣  เริ่มกระบวนการกรอกรหัส (Hybrid Mode)...", style="dim")
+                kill_blockers()
+
+                # 🛑 DEBUG LOCATION (คงไว้ตามเดิม)
+                console.print(f"      📍 [bold magenta]Debug Location:[/]")
+                console.print(f"           🔗 URL: {self.driver.current_url}")
+                console.print(f"           📄 Title: {self.driver.title}")
+                console.print(f"           🪟 Tabs Open: {len(self.driver.window_handles)}")
+
+                if len(self.driver.window_handles) > 1:
+                    console.print("           ⚠️ พบ Tab มากกว่า 1! (อาจต้องสลับหน้าต่าง)", style="bold yellow")
+
+                # --- 🛑 LOGIC ใหม่: เช็คว่ามีฟอร์มไหม ถ้าไม่มี ให้ Continue Loop ---
+                console.print("      ⏳ รอให้ฟอร์ม Login ปรากฏ...", style="dim")
                 
-                # สคริปต์ JS สำหรับค้นหาและกรอกข้อมูล (หาทั้งหน้าหลักและ Iframe)
-                # สคริปต์นี้จะคืนค่า 'success' ถ้ากรอกได้
-                js_inject_script = f"""
-                    function tryFill(doc) {{
-                        let u = doc.querySelector("input[name='username']") || doc.querySelector("#login-form-username");
-                        let p = doc.querySelector("input[name='password']") || doc.querySelector("#login-form-password");
-                        let btn = doc.querySelector("#login_company") || doc.querySelector("button[type='submit']");
-                        
-                        if (u && p) {{
-                            u.value = '{MY_USERNAME}';
-                            u.dispatchEvent(new Event('input', {{ bubbles: true }}));
-                            u.dispatchEvent(new Event('change', {{ bubbles: true }}));
-                            
-                            p.value = '{MY_PASSWORD}';
-                            p.dispatchEvent(new Event('input', {{ bubbles: true }}));
-                            p.dispatchEvent(new Event('change', {{ bubbles: true }}));
-                            
-                            if (btn) {{
-                                setTimeout(() => btn.click(), 1000);
-                                return 'clicked';
-                            }}
-                            
-                            // ถ้าไม่มีปุ่ม ให้ลองกด Enter ที่รหัสผ่าน
-                            let enterEvent = new KeyboardEvent('keydown', {{
-                                key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true
-                            }});
-                            p.dispatchEvent(enterEvent);
-                            return 'filled_enter';
-                        }}
-                        return 'not_found';
-                    }}
-
-                    // 1. ลองหน้าหลัก
-                    let res = tryFill(document);
-                    if (res !== 'not_found') return res;
-
-                    // 2. ลองวนหาใน Iframe ทุกตัว
-                    let frames = document.querySelectorAll("iframe");
-                    for (let i = 0; i < frames.length; i++) {{
-                        try {{
-                            let doc = frames[i].contentDocument || frames[i].contentWindow.document;
-                            if (doc) {{
-                                let resFrame = tryFill(doc);
-                                if (resFrame !== 'not_found') return 'iframe_' + resFrame;
-                            }}
-                        }} catch(e) {{}}
-                    }}
-                    return 'failed';
-                """
-
-                # รันสคริปต์ (ลองซ้ำ 3 รอบเผื่อเว็ปโหลดช้า)
-                fill_status = 'failed'
-                for i in range(3):
+                def check_input_exists():
                     try:
-                        fill_status = self.driver.execute_script(js_inject_script)
-                        if fill_status != 'failed':
-                            console.print(f"      ✅ JS ฝังข้อมูลสำเร็จ! (Status: {fill_status})", style="bold green")
-                            break
-                    except Exception as e:
-                        console.print(f"      ⚠️ JS Error: {e}", style="dim")
-                    time.sleep(3)
+                        self.driver.find_element(By.ID, "login-form-username")
+                        return True
+                    except: return False
 
-                if fill_status == 'failed':
-                    console.print("      ❌ JS หาช่องไม่เจอ (หน้าเว็บอาจขาวสนิท)", style="red")
-                    # ไม้ตายสุดท้าย: ถ้าหน้าขาว ให้ลอง Refresh แล้วทำใหม่ในรอบถัดไป
+                try:
+                    # รอ 15 วินาที
+                    WebDriverWait(self.driver, 15).until(lambda d: check_input_exists())
+                    console.print("      ✅ เจอช่องกรอกข้อมูลแล้ว!", style="green")
+                except:
+                    # ถ้าหาไม่เจอ -> แจ้งเตือน -> Continue Loop (เริ่มรอบใหม่)
+                    console.print(f"      ❌ รอบที่ {attempt} หาฟอร์มไม่เจอ! (จะเริ่ม Step 1 ใหม่)", style="bold red")
                     if attempt < MAX_RETRIES:
-                        console.print("      🔄 หน้าขาว -> Refresh...", style="yellow")
-                        self.driver.refresh()
-                        time.sleep(5)
-                        continue # วนลูปใหม่
+                        self.driver.delete_all_cookies() # ล้าง Cookies ก่อนเริ่มใหม่
+                        time.sleep(3)
+                        continue # <--- ดีดกลับไปเริ่ม Loop รอบถัดไปทันที
                     else:
-                        raise Exception("ไม่สามารถกรอกรหัสได้ (หน้าเว็บเพี้ยนถาวร)")
+                        raise Exception("หาฟอร์มไม่เจอครบ 3 รอบแล้ว")
+
+                # --- 🛠️ Core Logic: ฟังก์ชันสำหรับกรอก (โค้ดเดิมครบถ้วน) ---
+                def attempt_fill_form(context_name="Main Page"):
+                    # Credentials
+                    credentials = {
+                        "login-form-username": MY_USERNAME,
+                        "login-form-password": MY_PASSWORD
+                    }
+                    
+                    # Check ว่าเจอ Input ไหมใน Context นี้
+                    try:
+                        self.driver.find_element(By.ID, "login-form-username")
+                        console.print(f"      👀 พบฟอร์ม Login ที่: [bold blue]{context_name}[/]", style="dim")
+                    except:
+                        return False # ไม่เจอ Input ในหน้านี้/iframe นี้
+
+                    for field_id, value in credentials.items():
+                        filled_success = False
+                        elem = self.driver.find_element(By.ID, field_id)
+                        console.print(f"      👉 กำลังจัดการช่อง: [cyan]{field_id}[/]", style="dim")
+
+                        # --- PHASE 1: Standard Interaction (ลองคลิกธรรมดา 2 ครั้งตามสั่ง) ---
+                        for i in range(3):
+                            try:
+                                # console.print(f"          ⏳ ลองแบบปกติ (Standard) รอบที่ {i+1}...", style="dim")
+                                elem.click()
+                                elem.clear()
+                                elem.send_keys(value)
+                                if elem.get_attribute('value') == value:
+                                    console.print(f"          ✅ กรอกแบบปกติสำเร็จ (Standard Attempt {i+1})", style="green")
+                                    filled_success = True
+                                    break
+                            except: 
+                                time.sleep(0.5)
+                        
+                        if filled_success: continue # ไป Field ถัดไป
+
+                        # --- PHASE 2: Ultimate Stealth (ถ้าแบบปกติไม่ผ่าน) ---
+                        console.print(f"          ⚠️ แบบปกติไม่ได้ผล... เปิดโหมด [bold red]Ultimate Stealth[/]", style="yellow")
+                        
+                        # Helper: Human Type
+                        def human_type(element, text):
+                            element.click()
+                            element.send_keys(Keys.CONTROL + "a")
+                            element.send_keys(Keys.DELETE)
+                            time.sleep(random.uniform(0.1, 0.3))
+                            for char in text:
+                                element.send_keys(char)
+                                time.sleep(random.uniform(0.04, 0.1))
+
+                        # Helper: JS Force
+                        def js_force_fill(elem_id, value):
+                            self.driver.execute_script(f"document.getElementById('{elem_id}').value = '{value}';")
+
+                        methods = ["Human Typing", "JS Force Fill"]
+                        for method in methods:
+                            try:
+                                if method == "Human Typing": human_type(elem, value)
+                                elif method == "JS Force Fill": js_force_fill(field_id, value)
+                                
+                                # ตรวจสอบผล
+                                if elem.get_attribute('value') == value:
+                                    console.print(f"          ✅ กรอกสำเร็จ (Method: {method})", style="green")
+                                    filled_success = True
+                                    break
+                                else:
+                                    console.print(f"          ⚠️ {method} ไม่ติด... ลองวิธีต่อไป", style="dim")
+                            except: pass
+                        
+                        if not filled_success: 
+                            console.print(f"          ❌ กรอก {field_id} ล้มเหลวทุกวิธี", style="bold red")
+                            return False # ล้มเหลวใน Field นี้
+                    
+                    return True # กรอกครบทุก Field
+
+                # --- 🚀 RUN STEP 4: Main Logic ---
+                form_filled = False
+                
+                # 1. ลองหาในหน้าหลักก่อน
+                if attempt_fill_form("Main Page"):
+                    form_filled = True
+                
+                # 2. ถ้าไม่เจอ ให้มุดหาใน Iframe (Iframe Support อย่างสมบูรณ์)
+                else:
+                    console.print("      ⚠️ ไม่เจอฟอร์มหน้าหลัก... เริ่มสแกน Iframes...", style="yellow")
+                    iframes = self.driver.find_elements(By.TAG_NAME, "iframe")
+                    if iframes:
+                        console.print(f"      👀 เจอ {len(iframes)} Iframes กำลังตรวจสอบ...", style="dim")
+                        for index, frame in enumerate(iframes):
+                            try:
+                                self.driver.switch_to.default_content() # Reset
+                                self.driver.switch_to.frame(frame)
+                                if attempt_fill_form(f"Iframe #{index+1}"):
+                                    console.print(f"      🎉 เจอและกรอกใน Iframe #{index+1} สำเร็จ!", style="bold green")
+                                    form_filled = True
+                                    break
+                            except: continue
+                        self.driver.switch_to.default_content() # กลับสู่โลกความจริง
+                    else:
+                        console.print("      ❌ ไม่พบ Iframe ในหน้านี้", style="red")
+
+                if not form_filled:
+                    # Log ก่อนตาย
+                    console.print(f"      ☠️ FAILED at URL: {self.driver.current_url}", style="bold red")
+                    raise Exception("หาช่องกรอกไม่เจอทั้งหน้าหลักและ Iframe")
+
+                # --- 🔄 Click Login Button (Robust Loop) ---
+                console.print("      👉 กำลังจะกดปุ่ม Login...", style="dim")
+                click_methods = ["Direct Click", "JS Click", "Enter Key"]
+
+                for method in click_methods:
+                    try:
+                        kill_blockers()
+                        if method == "Direct Click":
+                            try: self.driver.find_element(By.ID, "login_company").click()
+                            except: self.driver.find_element(By.ID, "login-resume").click() 
+                        elif method == "JS Click":
+                            self.driver.execute_script("document.getElementById('login_company').click()")
+                        elif method == "Enter Key":
+                            self.driver.find_element(By.ID, "login-form-password").send_keys(Keys.ENTER)
+                        
+                        time.sleep(3)
+                        if "auth" not in self.driver.current_url and "login" not in self.driver.current_url:
+                            console.print(f"      🚀 Login Triggered! (Method: {method})", style="bold green")
+                            break
+                        else:
+                            console.print(f"      ⚠️ {method} กดแล้วนิ่ง... ลองวิธีต่อไป", style="dim")
+                    except Exception as e:
+                        console.print(f"      ❌ {method} Error: {e}", style="dim")
                         
                 # ==============================================================================
                 # 5️⃣ STEP 5: ตรวจสอบผลลัพธ์
