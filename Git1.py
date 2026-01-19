@@ -457,6 +457,93 @@ class JobThaiRowScraper:
                 if not reconstructed_url:
                     raise Exception("ไม่สามารถดึงค่าพารามิเตอร์เพื่อสร้าง URL ได้")
 
+                # ==============================================================================
+                # 🚀 EXTRA STEP: พยายาม Login ด้วย API (Fast Track)
+                # ==============================================================================
+                try:
+                    import requests
+                    console.print(f"     ⚡ ตรวจพบ Params ครบ! กำลังลอง Login ด้วย API (Fast Track)...", style="bold yellow")
+
+                    # 1. สร้าง Session และปลอมตัวเป็น Browser ปัจจุบัน
+                    # การใช้ User-Agent เดียวกับ Selenium สำคัญมากเพื่อไม่ให้ Server สงสัย
+                    current_user_agent = self.driver.execute_script("return navigator.userAgent;")
+                    api_session = requests.Session()
+                    api_headers = {
+                        'User-Agent': current_user_agent,
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                        'Referer': self.driver.current_url 
+                    }
+
+                    # 2. เตรียมข้อมูล (Payload) จาก params ที่คุณดึงมาได้
+                    # เราเอา params ที่คุณดึงด้วย JS มายัดใส่ Payload เลย
+                    api_payload = {
+                        'username': MY_USERNAME,  # ✅ แก้จาก JOBTHAI_USER เป็น MY_USERNAME
+                        'password': MY_PASSWORD,
+                        'client_id': params['client_id'],
+                        'redirect_uri': params['redirect_uri'],
+                        'response_type': params.get('response_type', 'code'),
+                        'scope': params.get('scope', 'login'),
+                        'state': params.get('state', ''),
+                        'l': params.get('l', 'th'),
+                        'type': 'company' # สำคัญ: บอกว่าเป็นฝั่งบริษัท
+                    }
+
+                    # 3. สร้าง URL สำหรับยิง POST (ใช้ URL เดียวกับหน้า Login แต่เปลี่ยน Method เป็น POST)
+                    # หมายเหตุ: ปกติ URL ที่ยิง POST จะเป็น path /auth/authorize หรือตามที่คุณเจอใน Network Tab
+                    # เพื่อความชัวร์ เราใช้ reconstructed_url ที่คุณสร้างนี่แหละ แต่ยิง POST ใส่เลย
+                    # (หรือถ้า Endpoint จริงต่างออกไป ให้ใส่ URL นั้นตรงนี้ครับ)
+                    post_target_url = reconstructed_url.replace('/companies/login', '/auth/authorize') # เดา pattern จากที่คุณเจอ
+
+                    # 4. ลั่นไกยิง API!
+                    # allow_redirects=True เพื่อให้มันวิ่งตามไปจนถึงหน้า Dashboard แล้วเก็บ Cookie ระหว่างทาง
+                    api_response = api_session.post(post_target_url, data=api_payload, headers=api_headers, allow_redirects=True)
+
+                    # 5. เช็คผลลัพธ์
+                    if api_response.status_code == 200 and "dashboard" in api_response.url:
+                        console.print(f"     ✅ API Login สำเร็จ! (ทะลุไปหน้า {api_response.url})", style="bold green")
+                        
+                        # 6. ยัด Cookie กลับใส่ Selenium (Cookie Injection)
+                        # ต้องแน่ใจว่า Driver อยู่ใน Domain เดียวกันไม่งั้นจะ Add Cookie ไม่เข้า
+                        # ตอนนี้ Driver อยู่หน้า auth.jobthai.com แต่อาจต้องย้ายไปหน้าหลักก่อน
+                        
+                        for cookie in api_session.cookies:
+                            # ปรับแต่ง Domain นิดหน่อยเพื่อความชัวร์ (ลบจุดนำหน้า)
+                            cookie_domain = cookie.domain.lstrip('.') if cookie.domain else '.jobthai.com'
+                            
+                            try:
+                                self.driver.add_cookie({
+                                    'name': cookie.name,
+                                    'value': cookie.value,
+                                    'domain': cookie_domain,
+                                    'path': cookie.path,
+                                    # 'secure': cookie.secure
+                                })
+                            except:
+                                # ถ้าใส่ Domain แล้วพัง ให้ลองแบบไม่ระบุ Domain
+                                try: self.driver.add_cookie({'name': cookie.name, 'value': cookie.value})
+                                except: pass
+
+                        console.print("     🍪 Inject Cookies เสร็จสิ้น! กำลังวาร์ปไปหน้า Dashboard...", style="dim")
+                        
+                        # วาร์ปไปหน้าปลายทางเลย ไม่ต้องกรอกรหัสแล้ว
+                        self.driver.get("https://www.jobthai.com/employer/dashboard")
+                        time.sleep(3)
+                        
+                        # เช็คว่าเข้าได้จริงไหม
+                        if "login" not in self.driver.current_url:
+                            return True # 🎉 จบงานทันที!
+                        else:
+                            console.print("     ⚠️ API Login ผ่านแต่หน้าเว็บยังไม่เข้า (Cookie Domain Issue?) -> กลับไปใช้วิธีกรอกปกติ", style="yellow")
+                    
+                    else:
+                        console.print(f"     ❌ API Login ไม่ผ่าน (Status: {api_response.status_code}) -> กลับไปใช้วิธีกรอกปกติ", style="red")
+                        # console.print(api_response.text[:200]) # ปริ้นดู Error ถ้าอยากรู้
+
+                except Exception as api_err:
+                    console.print(f"     ⚠️ API Mode Error: {api_err} -> Ignored.", style="dim")
+
+            
+
                 # 4. สั่งโหลดหน้าเว็บด้วย URL ใหม่
                 console.print(f"      🔄 Reload ไปยังหน้า Login บริษัท...", style="bold cyan")
                 self.driver.get(reconstructed_url)
