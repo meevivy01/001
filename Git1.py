@@ -1581,6 +1581,16 @@ class JobThaiRowScraper:
     def run(self):
         import sys # อย่าลืม import sys ถ้ายังไม่มี (หรือใช้ที่มีอยู่แล้ว)
         self.email_report_list = []
+
+
+        # ===============================================================
+        # 🎚️ สวิตช์ควบคุม: ส่งอีเมลสรุป (Batch) หรือไม่?
+        # ใส่ True  = เปิดใช้งาน (ส่งสรุปวันศุกร์/รันมือตามปกติ)
+        # ใส่ False = ปิดถาวร (ไม่ส่งสรุปเลย แม้จะเป็นวันศุกร์)
+        # ===============================================================
+        ENABLE_BATCH_EMAIL = False  # <--- อยากปิดแก้ตรงนี้เป็น False ครับ
+        # ===============================================================
+        
         # ถ้าล็อกอินไม่ผ่าน ให้สั่งโปรแกรมระเบิดตัวเอง (Exit 1) เพื่อให้ GitHub รู้ว่า Failed
         if not self.step1_login(): 
             console.print("❌ Login Failed -> Force Exit for Retry", style="bold red")
@@ -1704,13 +1714,18 @@ class JobThaiRowScraper:
                             
                             progress.advance(task_id)
 
-                # จบ Loop ใหญ่ของ Keyword นี้ -> ส่ง Batch ถ้าเป็นวันศุกร์
-                if current_keyword_batch and (is_friday or is_manual_run):
-                    progress.console.print(f"\n[bold green]📨 วันศุกร์/Manual -> ส่งสรุป Batch ({len(current_keyword_batch)} คน)[/]")
+                # จบ Loop ใหญ่ของ Keyword นี้
+                # 🟢 [แก้ไข] เพิ่มตัวแปร ENABLE_BATCH_EMAIL เข้าไปในเงื่อนไข
+                if current_keyword_batch and (is_friday or is_manual_run) and ENABLE_BATCH_EMAIL:
+                    progress.console.print(f"\n[bold green]📨 วันศุกร์/Manual (Switch ON) -> ส่งสรุป Batch ({len(current_keyword_batch)} คน)[/]")
                     self.send_batch_email(current_keyword_batch, keyword)
                     if EMAIL_USE_HISTORY:
                         for p in current_keyword_batch: 
                             self.update_history_sheet(p['id'], str(today))
+                
+                # (Optional) แจ้งเตือนว่าข้ามการส่ง
+                elif current_keyword_batch and (is_friday or is_manual_run) and not ENABLE_BATCH_EMAIL:
+                     progress.console.print(f"\n[dim yellow]🚫 ข้ามการส่งเมลสรุป (Switch OFF) - เก็บข้อมูลลง Sheet อย่างเดียว[/]")
 
             console.print("⏳ พัก 3 วินาที ก่อนคำต่อไป...", style="dim")
             time.sleep(3)
